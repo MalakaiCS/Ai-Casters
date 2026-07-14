@@ -158,6 +158,29 @@ with the signed-in user's access token and enforced by RLS.
 
 ---
 
+## 6. Ship a pre-configured build (recommended for distribution)
+
+So end users don't have to paste anything, the installer can be **baked** with your
+Supabase URL + anon key — kept out of the (public) source via GitHub Actions
+secrets:
+
+1. In the repo: **Settings → Secrets and variables → Actions → New repository
+   secret**, add:
+   - `SUPABASE_URL` = `https://<your-ref>.supabase.co`
+   - `SUPABASE_ANON_KEY` = your anon key
+2. Build a release (push a `v*` tag or run the **Release**/**Build Windows
+   installer** workflow). The build writes `ai_caster/deploy_defaults.json` from
+   the secrets and bundles it.
+
+On first launch the app seeds its settings from those defaults (a user's existing
+`settings.json` is never overwritten). The file is git-ignored, so keys never enter
+the repo. For local development you can instead set `AI_CASTER_SUPABASE_URL` and
+`AI_CASTER_SUPABASE_ANON_KEY` environment variables.
+
+> The baked defaults configure **auth**. Leave licensing/sync on `offline` until the
+> tables from step 5 exist; enable them per step 5b (or add those sections to the
+> bundled defaults) once the schema is in place.
+
 ## Security notes
 
 - The **anon** key is safe to ship; the **service_role** key is not — keep it

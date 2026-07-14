@@ -81,7 +81,7 @@ ai-caster = "ai_caster.__main__:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ai_caster = ["py.typed"]
+ai_caster = ["py.typed", "deploy_defaults.json"]
 "ai_caster.ui.assets" = ["*.png", "*.ico"]
 
 [tool.pytest.ini_options]

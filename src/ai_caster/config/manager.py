@@ -17,6 +17,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from ai_caster.config.deploy import apply_deploy_defaults
 from ai_caster.config.models import AppSettings
 from ai_caster.core.events import EventBus, SettingsChanged
 from ai_caster.core.logging import get_logger
@@ -68,7 +69,9 @@ class SettingsManager:
         """
         if not self._path.exists():
             _log.info("No settings file at %s; writing defaults.", self._path)
-            self._settings = AppSettings()
+            # Fresh install: seed from any baked-in deployment defaults (e.g. a
+            # pre-configured Supabase project). A user's own file is never touched.
+            self._settings = apply_deploy_defaults(AppSettings())
             self.save()
             self._notify("*")
             return self._settings
@@ -81,7 +84,7 @@ class SettingsManager:
         except (json.JSONDecodeError, ValidationError, OSError) as exc:
             self._backup_corrupt_file()
             _log.warning("Settings at %s were invalid (%s); restored defaults.", self._path, exc)
-            self._settings = AppSettings()
+            self._settings = apply_deploy_defaults(AppSettings())
             self.save()
 
         self._notify("*")
