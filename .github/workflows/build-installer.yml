@@ -30,19 +30,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[ui,capture,vision,ai,voice,obs,hotkeys,diagnostics]" pyinstaller
 
-      - name: Inject deployment defaults (optional)
+      - name: Inject deployment defaults
         shell: pwsh
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
+          $manifestUrl = "${{ github.server_url }}/${{ github.repository }}/releases/latest/download/manifest.json"
+          $cfg = [ordered]@{ updater = [ordered]@{ manifest_url = $manifestUrl } }
           if ($env:SUPABASE_URL -and $env:SUPABASE_ANON_KEY) {
-            $cfg = @{ account = @{ provider = "supabase"; supabase_url = $env:SUPABASE_URL; supabase_anon_key = $env:SUPABASE_ANON_KEY } }
-            $cfg | ConvertTo-Json -Depth 6 | Set-Content -Path src/ai_caster/deploy_defaults.json -Encoding utf8
-            Write-Host "Baked Supabase deployment defaults into the build."
-          } else {
-            Write-Host "No SUPABASE_URL/SUPABASE_ANON_KEY secrets; building without deployment defaults."
+            $cfg["account"] = [ordered]@{ provider = "supabase"; supabase_url = $env:SUPABASE_URL; supabase_anon_key = $env:SUPABASE_ANON_KEY }
           }
+          $cfg | ConvertTo-Json -Depth 6 | Set-Content -Path src/ai_caster/deploy_defaults.json -Encoding utf8
+          Write-Host "Baked deployment defaults (updater manifest; Supabase if secrets set)."
 
       - name: Freeze app (PyInstaller)
         run: pyinstaller packaging/ai_caster.spec --noconfirm

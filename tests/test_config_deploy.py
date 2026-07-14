@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import ai_caster.config.deploy as deploy_mod
 from ai_caster.config.deploy import apply_deploy_defaults, deploy_overrides
 from ai_caster.config.manager import SettingsManager
 from ai_caster.config.models import AccountProvider, AppSettings
@@ -47,6 +48,22 @@ def test_fresh_settings_apply_deploy_defaults(monkeypatch, tmp_path: Path):
     assert settings.account.supabase_url == "https://demo.supabase.co"
     # And they were persisted.
     assert (tmp_path / "settings.json").exists()
+
+
+def test_bundled_updater_manifest_is_applied(monkeypatch):
+    # A build bakes updater.manifest_url into deploy_defaults.json; it must flow
+    # through to settings so the app checks for updates automatically.
+    monkeypatch.delenv(_ENV_URL, raising=False)
+    monkeypatch.delenv(_ENV_KEY, raising=False)
+    monkeypatch.setattr(
+        deploy_mod,
+        "_load_bundled",
+        lambda: {"updater": {"manifest_url": "https://example.com/manifest.json"}},
+    )
+    merged = apply_deploy_defaults(AppSettings())
+    assert merged.updater.manifest_url == "https://example.com/manifest.json"
+    # Untouched fields keep their defaults.
+    assert merged.updater.auto_check is True
 
 
 def test_existing_settings_are_not_overridden(monkeypatch, tmp_path: Path):

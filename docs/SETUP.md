@@ -188,8 +188,15 @@ monitor mix.
 - Subscription tiers gate features (e.g. cloud sync is Studio-tier). Licensing has
   an offline grace cache so an unreachable service won't interrupt a broadcast.
   **No payment processing** is included.
-- **Updates:** the app can check a release manifest and surface newer versions; it
-  never installs silently.
+- **Updates:** on startup (and via **Check for updates**) the app fetches a JSON
+  release manifest, compares it to the running version, and surfaces newer
+  releases — it never installs silently. Official builds are pre-wired: the release
+  workflow publishes `manifest.json` alongside the installer and serves it from the
+  stable `…/releases/latest/download/manifest.json` URL, which is baked into the
+  build's deploy defaults. To point at your own manifest, set
+  **Settings → `updater.manifest_url`**. Each release's manifest carries the
+  installer URL and its SHA-256, which the updater verifies before handing the
+  download on to install.
 
 ---
 
