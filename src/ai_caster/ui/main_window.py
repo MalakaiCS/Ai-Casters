@@ -11,19 +11,23 @@ from __future__ import annotations
 
 import sys
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
+    QLabel,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
     QStackedWidget,
+    QVBoxLayout,
     QWidget,
 )
 
-from ai_caster import __app_name__, __version__
+from ai_caster import __brand__, __version__
 from ai_caster.app import Application
 from ai_caster.core.logging import get_logger
+from ai_caster.ui.branding import app_icon, logo_pixmap
 from ai_caster.ui.qt_event_bridge import QtEventBridge
 from ai_caster.ui.views.account_view import AccountView
 from ai_caster.ui.views.capture_view import CaptureView
@@ -48,7 +52,8 @@ class MainWindow(QMainWindow):
     def __init__(self, application: Application) -> None:
         super().__init__()
         self._app = application
-        self.setWindowTitle(f"{__app_name__} v{__version__}")
+        self.setWindowTitle(f"{__brand__} · v{__version__}")
+        self.setWindowIcon(app_icon())
         self.resize(1024, 700)
 
         self._bridge = QtEventBridge(application.event_bus, self)
@@ -58,12 +63,27 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
+        # Left column: brand logo above the navigation list.
+        sidebar = QWidget()
+        sidebar.setFixedWidth(190)
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(0)
+
+        brand_pixmap = logo_pixmap(150)
+        if not brand_pixmap.isNull():
+            brand = QLabel()
+            brand.setPixmap(brand_pixmap)
+            brand.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            brand.setStyleSheet("padding: 10px 0;")
+            sidebar_layout.addWidget(brand)
+
         self._nav = QListWidget()
-        self._nav.setFixedWidth(190)
         self._nav.setStyleSheet("QListWidget { font-size: 14px; padding: 6px; }")
         self._stack = QStackedWidget()
+        sidebar_layout.addWidget(self._nav, stretch=1)
 
-        layout.addWidget(self._nav)
+        layout.addWidget(sidebar)
         layout.addWidget(self._stack, stretch=1)
         self.setCentralWidget(central)
 
@@ -151,6 +171,8 @@ def run_desktop_app(argv: list[str] | None = None) -> int:
     application = Application()
 
     qt_app = QApplication.instance() or QApplication(argv if argv is not None else sys.argv)
+    qt_app.setApplicationName(__brand__)
+    qt_app.setWindowIcon(app_icon())
 
     try:
         application.start_services()

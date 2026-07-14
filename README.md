@@ -1,4 +1,9 @@
-# AI Esports Caster
+<p align="center">
+  <img src="src/ai_caster/ui/assets/logo.png" alt="AI Casters" width="360">
+</p>
+
+<h1 align="center">AI Casters</h1>
+<p align="center"><em>Commentary. Intelligence. Immersion.</em></p>
 
 Autonomous, professional-quality AI commentary for **Counter-Strike 2**
 broadcasts. Once configured the application watches a CS2 observer feed, reads
@@ -7,7 +12,9 @@ independent AI voice channels (play-by-play + analyst) routed into OBS — with 
 human caster required.
 
 > This is a commercial product under active development. See
-> [`docs/ROADMAP.md`](docs/ROADMAP.md) for the milestone plan and
+> [`docs/SETUP.md`](docs/SETUP.md) to get running, the
+> [`docs/CHECKLIST.md`](docs/CHECKLIST.md) to verify an install,
+> [`docs/ROADMAP.md`](docs/ROADMAP.md) for the milestone plan, and
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design.
 
 ## Status — Milestones 1–10 (complete)

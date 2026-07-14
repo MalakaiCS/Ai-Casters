@@ -7,6 +7,7 @@ core-service and feed state at a glance.
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
@@ -17,8 +18,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ai_caster import __version__
+from ai_caster import __brand__, __tagline__, __version__
 from ai_caster.broadcast.controller import BroadcastController
+from ai_caster.ui.branding import logo_pixmap
 
 
 class DashboardView(QWidget):
@@ -29,11 +31,20 @@ class DashboardView(QWidget):
         self._broadcast = broadcast
         root = QVBoxLayout(self)
 
-        title = QLabel("AI Esports Caster")
-        title.setStyleSheet("font-size: 24px; font-weight: 700;")
-        subtitle = QLabel(f"Autonomous CS2 commentary · v{__version__}")
-        subtitle.setStyleSheet("color: #888;")
-        root.addWidget(title)
+        pixmap = logo_pixmap(360)
+        if not pixmap.isNull():
+            logo = QLabel()
+            logo.setPixmap(pixmap)
+            logo.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            root.addWidget(logo)
+        else:  # pragma: no cover - only if the asset is missing
+            title = QLabel(__brand__)
+            title.setStyleSheet("font-size: 24px; font-weight: 700;")
+            root.addWidget(title)
+
+        subtitle = QLabel(f"{__tagline__}  ·  v{__version__}")
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        subtitle.setStyleSheet("color: #888; margin-bottom: 8px;")
         root.addWidget(subtitle)
 
         if broadcast is not None:
