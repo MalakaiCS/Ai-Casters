@@ -325,6 +325,33 @@ engine also counts events crossing the bus (excluding its own publications) as a
 cheap throughput signal, and `tail_log` reads the rotating log for the in-app
 inspector.
 
+## Milestone 10 additions
+
+### Offline training pipeline (`training/`)
+This module is deliberately **outside the live system**: it has no event bus, is
+never constructed by `Application`, and only ever reads authorized transcripts and
+writes an anonymized profile. Its guardrails (`guardrails.py`) are the design
+centre, not an afterthought — each one is enforced at ingest so the rest of the
+pipeline *cannot* cross the line the specification draws:
+
+- **No audio ⇒ no voice cloning.** `reject_audio` refuses any source carrying an
+  audio/voice field. The pipeline only ever sees text, so there is no signal from
+  which a voice could be reconstructed — the prohibition is structural, not a
+  policy check that could be bypassed.
+- **Authorized only.** `ensure_authorized` refuses any source that isn't
+  explicitly authorized and backed by a consent reference.
+- **No identities.** `anonymize_role` collapses every speaker to a generic role;
+  `is_learnable_token` drops proper nouns (player/team/caster names) and non-words,
+  so learning captures *common connective language and pacing* — never a person's
+  signature phrasing.
+
+Given clean inputs, `analysis.py` computes aggregate pacing and vocabulary as pure,
+deterministic functions, and `TrainingPipeline` assembles them into a `StyleProfile`
+artifact. The pipeline can *suggest* Director pacing values (e.g. a minimum speech
+gap derived from observed inter-line silence) but never applies them — adopting a
+suggestion is a human decision, keeping the training tool cleanly separated from the
+live engine. It is driven by the `ai-caster train` CLI subcommand.
+
 ## Package layout
 
 ```
@@ -431,6 +458,12 @@ src/ai_caster/
 │   ├── collector.py   # samples subsystems via accessor callables
 │   ├── logs.py        # rotating-log tail for the in-app inspector
 │   └── engine.py      # timer thread: publish DiagnosticsUpdated
+├── training/          # Module 18: OFFLINE, standalone (not wired to Application)
+│   ├── guardrails.py  # no-audio / authorized-only / no-identity enforcement
+│   ├── models.py      # Authorization, TranscriptSegment, StyleProfile
+│   ├── ingest.py      # load authorized transcripts (guardrails applied)
+│   ├── analysis.py    # pure pacing + vocabulary statistics
+│   └── pipeline.py    # TrainingPipeline -> exported StyleProfile
 └── ui/
     ├── main_window.py # Module 1: PySide6 shell + navigation
     ├── qt_event_bridge.py
@@ -468,7 +501,9 @@ controller, hotkey manager and diagnostics engine are tested with fakes and the
 null backends (casting lifecycle + entitlement gate, hotkey binding/trigger/guard,
 diagnostics collector/engine/log-tail), and a headless full-stack check drives
 casting, mute and forced replay through the real hotkey manager on a live
-`Application`.
+`Application`. The training pipeline is tested guardrail-first — audio refusal,
+authorization refusal, role anonymization and proper-noun exclusion — alongside
+its pacing/vocabulary analysis and end-to-end profile export.
 The FastAPI endpoint is tested with Starlette's `TestClient`; persistence is
 tested against a temp-file SQLite database; the Match Engine is tested end-to-end
 by publishing GSI payloads on the bus and asserting on the model, events, stats

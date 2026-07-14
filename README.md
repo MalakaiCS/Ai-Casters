@@ -10,7 +10,7 @@ human caster required.
 > [`docs/ROADMAP.md`](docs/ROADMAP.md) for the milestone plan and
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design.
 
-## Status — Milestones 1–9
+## Status — Milestones 1–10 (complete)
 
 **Milestone 1 — Foundation**
 
@@ -135,6 +135,24 @@ human caster required.
   an in-app tail of the application log.
 - **Every view is live** — the last placeholder is gone; the full product surface
   is real.
+
+**Milestone 10 — Offline Training Pipeline**
+
+- A **standalone, offline** tool that learns *general* timing/pacing and generic
+  vocabulary tendencies from **authorized transcripts** — separate from the live
+  casting engine.
+- **Hard guardrails, enforced at the boundary:** transcripts only (**no audio, so
+  no voice cloning**), authorized + consent-referenced sources only, speakers
+  anonymized to generic roles, and proper nouns (player/team/caster names) excluded
+  from learned vocabulary — so **no identifiable individual is modelled or
+  imitated**.
+- It exports an anonymized style profile and can *suggest* Director pacing values
+  for review, but never applies them.
+
+```bash
+# Analyse a folder of authorized transcript *.json files
+ai-caster train ./transcripts --out style-profile.json
+```
 
 ## Quick start
 

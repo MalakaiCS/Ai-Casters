@@ -240,7 +240,7 @@ Deliverables:
   check and the composition-root wiring. All backends degrade gracefully and no
   payment processing is present.
 
-### ✅ Milestone 9 — Full Desktop UI & UX polish *(current)*
+### ✅ Milestone 9 — Full Desktop UI & UX polish
 **Goal:** finish the desktop surface — every module has a real, live view — and add
 the operator ergonomics that make long unattended broadcasts practical: one-switch
 broadcast control, global hotkeys, and a runtime diagnostics dashboard.
@@ -275,10 +275,47 @@ Deliverables:
   mute and forced replay through the hotkeys and asserting the diagnostics
   snapshot. UI verified by byte-compile + slot wiring (Qt can't load headless).
 
-### Milestone 10 — Offline Training Pipeline
-Offline analysis of **authorized** recordings for general timing/pacing/vocab
-learning. No voice cloning or imitation of identifiable individuals. Not part of
-the live casting engine.
+### ✅ Milestone 10 — Offline Training Pipeline *(current)*
+**Goal:** a **standalone, offline** tool that learns *general* timing/pacing and
+generic vocabulary tendencies from **authorized transcripts** — with hard,
+enforced guardrails against voice cloning and imitation of identifiable
+individuals. It is not part of the live casting engine.
+
+Deliverables:
+- **Guardrails as the design centre** (`training/guardrails.py`): the constraints
+  are enforced at the boundary so the pipeline is structurally incapable of
+  crossing them —
+  - *transcripts only, never audio* (`reject_audio` refuses any audio/voice field;
+    with no audio there is nothing to clone);
+  - *authorized material only* (`ensure_authorized` refuses any source lacking
+    `authorized=true` **and** a consent reference);
+  - *generic roles, never identities* (`anonymize_role` collapses speakers to
+    play-by-play/analyst/commentator);
+  - *generic vocabulary only* (`is_learnable_token` drops proper nouns — player,
+    team and caster names — and non-words, so a person's signature phrasing is
+    never learned).
+- **Ingest** (`ingest.py`): loads authorized transcript JSON, applying every
+  guardrail on the way in; a mixed folder yields the cleared sources and skips the
+  rest with a clear reason.
+- **Analysis** (`analysis.py`): pure, deterministic functions computing aggregate
+  **pacing** (words/line, words/sec, lines/min, inter-line gap) and **vocabulary**
+  (type–token ratio, filler ratio, common terms/bigrams above a frequency floor).
+- **Pipeline** (`pipeline.py`): gathers sources → analyses → exports an anonymized
+  `StyleProfile` artifact. It can *suggest* Director pacing values for a human to
+  review but never applies them — it takes no event bus and the live `Application`
+  never constructs it.
+- **CLI**: `ai-caster train <dir> [--out profile.json] [--skip-unauthorized]`
+  prints the policy, refuses or skips uncleared/audio-bearing files, and writes the
+  profile.
+- Unit tests for every guardrail (audio refusal, authorization refusal,
+  anonymization, proper-noun exclusion), ingest, analysis and the end-to-end
+  pipeline, plus a CLI run demonstrating refusals and a names-free profile.
+
+---
+
+**All ten milestones are complete.** Every module in the inventory is implemented,
+tested and wired; the domain runs headlessly and the desktop UI is byte-compile
+verified.
 
 ---
 
