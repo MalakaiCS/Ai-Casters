@@ -17,11 +17,13 @@ from ai_caster.vision.detectors import (
     FlashDetector,
     HudPresenceDetector,
     KillFeedActivityDetector,
+    ReplayTextDetector,
     SceneClassifier,
     SmokeDetector,
     VisionDetector,
 )
 from ai_caster.vision.pipeline import VisionPipeline
+from ai_caster.vision.roi import Region
 
 _log = get_logger("vision.factory")
 
@@ -43,6 +45,18 @@ def build_detectors(settings: VisionSettings) -> list[VisionDetector]:
         detectors.append(HudPresenceDetector())
     if settings.detect_scene:
         detectors.append(SceneClassifier())
+    if settings.detect_replay_text:
+        detectors.append(
+            ReplayTextDetector(
+                Region(
+                    "replay_banner",
+                    settings.replay_region_left,
+                    settings.replay_region_top,
+                    settings.replay_region_width,
+                    settings.replay_region_height,
+                )
+            )
+        )
 
     if settings.model_path:
         from ai_caster.vision.detectors.onnx_detector import OnnxObjectDetector

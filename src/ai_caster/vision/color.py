@@ -42,6 +42,35 @@ def value_map(bgr: np.ndarray) -> np.ndarray:
     return bgr.astype(np.float32).max(axis=-1) / 255.0
 
 
+def luma_map(bgr: np.ndarray) -> np.ndarray:
+    """Per-pixel Rec. 601 luma in ``[0, 1]``."""
+    arr = bgr.astype(np.float32) / 255.0
+    return 0.114 * arr[..., 0] + 0.587 * arr[..., 1] + 0.299 * arr[..., 2]
+
+
+def edge_fraction(bgr: np.ndarray, *, threshold: float = 0.25) -> float:
+    """Fraction of strong luma edges — high for crisp text/graphics."""
+    lum = luma_map(bgr)
+    if lum.shape[0] < 2 or lum.shape[1] < 2:
+        return 0.0
+    gx = np.abs(np.diff(lum, axis=1))
+    gy = np.abs(np.diff(lum, axis=0))
+    return float(0.5 * (gx > threshold).mean() + 0.5 * (gy > threshold).mean())
+
+
+def background_dominance(bgr: np.ndarray, *, tolerance: float = 0.08) -> float:
+    """Fraction of pixels close to the region's median luma.
+
+    A text banner sits on a fairly uniform background, so a large share of its
+    pixels cluster near one value — unlike busy gameplay, which does not.
+    """
+    lum = luma_map(bgr)
+    if lum.size == 0:
+        return 0.0
+    median = float(np.median(lum))
+    return float((np.abs(lum - median) <= tolerance).mean())
+
+
 def mean_saturation(bgr: np.ndarray) -> float:
     return float(saturation_map(bgr).mean())
 

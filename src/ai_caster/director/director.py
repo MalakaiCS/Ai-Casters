@@ -118,8 +118,13 @@ class CommentaryDirector:
     def _on_vision_updated(self, event: VisionStateUpdated) -> None:
         state = event.state
         if state is not None:
+            # Only treat a *confident* replay-banner read as a replay hint; this
+            # signal is consulted only when replay integration is unavailable,
+            # and never outranks the authoritative external replay events.
+            is_replay = getattr(state, "scene", None) == SceneType.REPLAY
+            confidence = getattr(state, "scene_confidence", 0.0)
             with self._lock:
-                self._vision_replay = getattr(state, "scene", None) == SceneType.REPLAY
+                self._vision_replay = is_replay and confidence >= 0.5
 
     def _on_match_event(self, event: MatchEvent) -> None:
         self.handle_match_event(event)

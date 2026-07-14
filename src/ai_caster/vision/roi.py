@@ -52,7 +52,11 @@ RADAR = Region("radar", 0.0, 0.0, 0.16, 0.28)
 # The central play area, excluding HUD chrome — used for effect detection so the
 # HUD's own colours don't bias smoke/flash/fire estimates.
 PLAY_AREA = Region("play_area", 0.12, 0.10, 0.76, 0.72)
+# Where the observer overlay shows the on-screen "REPLAY" text/banner. Broadcasts
+# place this differently; the region is configurable via VisionSettings.
+REPLAY_BANNER = Region("replay_banner", 0.35, 0.02, 0.30, 0.09)
 
 DEFAULT_REGIONS: dict[str, Region] = {
-    r.name: r for r in (FULL, KILL_FEED, SCOREBOARD, BOMB_TIMER, HUD_BOTTOM, RADAR, PLAY_AREA)
+    r.name: r
+    for r in (FULL, KILL_FEED, SCOREBOARD, BOMB_TIMER, HUD_BOTTOM, RADAR, PLAY_AREA, REPLAY_BANNER)
 }

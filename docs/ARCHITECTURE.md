@@ -133,13 +133,18 @@ hand-crafted NumPy array.
 Two families implement that interface. **Analytic** detectors use classical
 colour statistics (`vision/color.py`) over resolution-independent regions of
 interest (`vision/roi.py`) — flash, smoke, fire, kill-feed/bomb-timer activity,
-HUD presence and a heuristic scene classifier. They need no model, so they are
-always available and honest about confidence (the scene classifier caps its
-confidence and never guesses *replay* — that authoritative signal comes from the
-external replay integration in M5). The **model-backed** `OnnxObjectDetector`
-(behind the `[vision]` extra) loads *user-supplied* weights via onnxruntime; no
-weights ship with the project, and a missing runtime/model degrades gracefully to
-the analytic detectors.
+HUD presence, a heuristic scene classifier, and a **replay-banner detector**.
+They need no model, so they are always available and honest about confidence: the
+generic scene classifier caps its confidence and won't guess camera type, while
+the replay-banner detector *can* assert `SCENE=REPLAY` with real confidence when
+the broadcast's on-screen "REPLAY" text is present in its (configurable) region —
+detecting the banner's text-edge-on-uniform-background signature, not reading the
+word. This stays a *vision hint*: the external replay integration (M5) remains
+authoritative and outranks it, and the Director only consults the vision signal
+(gated on confidence) when replay integration is unavailable. The **model-backed**
+`OnnxObjectDetector` (behind the `[vision]` extra) loads *user-supplied* weights
+via onnxruntime; no weights ship with the project, and a missing runtime/model
+degrades gracefully to the analytic detectors.
 
 Per-frame observations are folded into an immutable `VisionState` and published
 at the throttled rate (never per raw frame). The **fusion** primitive

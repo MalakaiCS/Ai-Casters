@@ -183,6 +183,14 @@ class VisionSettings(_Section):
     detect_bomb_timer: bool = True
     detect_hud: bool = True
     detect_scene: bool = True
+    detect_replay_text: bool = True
+
+    # Region of the on-screen "REPLAY" banner, as fractions of the frame. Adjust
+    # to match the broadcast overlay's placement.
+    replay_region_left: float = Field(default=0.35, ge=0.0, le=1.0)
+    replay_region_top: float = Field(default=0.02, ge=0.0, le=1.0)
+    replay_region_width: float = Field(default=0.30, gt=0.0, le=1.0)
+    replay_region_height: float = Field(default=0.09, gt=0.0, le=1.0)
 
     # Optional ONNX object-detection model (weights are provided by the user).
     model_path: str = Field(default="", description="Path to an ONNX detection model (optional).")

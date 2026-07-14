@@ -7,6 +7,7 @@ from ai_caster.vision.detectors.hud import (
     HudPresenceDetector,
     KillFeedActivityDetector,
 )
+from ai_caster.vision.detectors.replay import ReplayTextDetector
 from ai_caster.vision.detectors.scene import SceneClassifier
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "BombTimerDetector",
     "HudPresenceDetector",
     "SceneClassifier",
+    "ReplayTextDetector",
 ]

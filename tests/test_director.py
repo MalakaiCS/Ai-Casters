@@ -115,6 +115,33 @@ def test_replay_active_suppresses_live_play_by_play():
     assert directives[0].reason == "replay_active"
 
 
+def test_vision_replay_hint_used_only_when_integration_disabled():
+    from ai_caster.vision.events import VisionStateUpdated
+    from ai_caster.vision.observations import ObservationKind, SceneType, VisionObservation
+    from ai_caster.vision.state import VisionState
+
+    def replay_vision(confidence: float) -> VisionState:
+        return VisionState.from_observations(
+            0,
+            [VisionObservation(ObservationKind.SCENE, confidence, 0, value=SceneType.REPLAY.value)],
+            min_confidence=0.5,
+        )
+
+    # Integration disabled + cautious safety flag: a confident vision replay
+    # banner makes the broadcast "not live".
+    director, _, bus = _director(replay_integration_enabled=False, treat_unknown_as_live=False)
+    bus.publish(VisionStateUpdated(state=replay_vision(0.8)))
+    assert director.is_live is False
+    # A weak reading is ignored.
+    bus.publish(VisionStateUpdated(state=replay_vision(0.3)))
+    assert director.is_live is True
+
+    # With integration enabled, the vision hint never overrides "live".
+    director2, _, bus2 = _director(replay_integration_enabled=True)
+    bus2.publish(VisionStateUpdated(state=replay_vision(0.9)))
+    assert director2.is_live is True
+
+
 def test_replay_started_and_ended_directives():
     director, _, _ = _director()
     started = director.handle_replay_change(
