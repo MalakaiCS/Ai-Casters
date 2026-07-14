@@ -70,3 +70,8 @@ def post_json(
 ) -> Any:
     """POST ``payload`` as JSON and decode the JSON response."""
     return _request("POST", url, payload=payload, headers=headers, timeout=timeout)
+
+
+def delete_json(url: str, *, headers: dict[str, str] | None = None, timeout: float = 8.0) -> Any:
+    """DELETE ``url`` and decode any JSON body (empty response yields ``{}``)."""
+    return _request("DELETE", url, payload=None, headers=headers, timeout=timeout)

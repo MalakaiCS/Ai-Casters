@@ -12,10 +12,12 @@ from ai_caster.licensing.backend import (
     LicensingBackend,
     LicensingError,
     OfflineLicensingBackend,
+    SupabaseLicensingBackend,
 )
 from ai_caster.licensing.cache import LicenseCache
 from ai_caster.licensing.client import LicensingClient
 from ai_caster.licensing.events import LicenseStateChanged
+from ai_caster.licensing.factory import create_licensing_backend
 from ai_caster.licensing.models import (
     Device,
     Entitlements,
@@ -31,6 +33,8 @@ __all__ = [
     "LicensingBackend",
     "OfflineLicensingBackend",
     "HttpLicensingBackend",
+    "SupabaseLicensingBackend",
+    "create_licensing_backend",
     "LicensingError",
     "LicenseCache",
     "LicensingClient",

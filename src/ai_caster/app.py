@@ -40,9 +40,9 @@ from ai_caster.gsi.server import GSIServer
 from ai_caster.hotkeys.actions import HotkeyAction
 from ai_caster.hotkeys.backend import NullHotkeyBackend, PynputHotkeyBackend
 from ai_caster.hotkeys.manager import HotkeyManager
-from ai_caster.licensing.backend import HttpLicensingBackend, OfflineLicensingBackend
 from ai_caster.licensing.cache import LicenseCache
 from ai_caster.licensing.client import LicensingClient
+from ai_caster.licensing.factory import create_licensing_backend
 from ai_caster.match.engine import MatchStateEngine
 from ai_caster.match.state import MatchStateStore
 from ai_caster.obs.controller import NullOBSController, WebSocketOBSController
@@ -52,8 +52,8 @@ from ai_caster.persistence.repository import MatchRepository
 from ai_caster.replay.receiver import ReplayReceiver
 from ai_caster.replay.server import ReplayServer
 from ai_caster.statistics.engine import StatisticsEngine
-from ai_caster.sync.backend import HttpSyncBackend, NullSyncBackend
 from ai_caster.sync.client import SettingsSyncClient
+from ai_caster.sync.factory import create_sync_backend
 from ai_caster.updater.backend import HttpUpdateBackend, NullUpdateBackend
 from ai_caster.updater.updater import AutoUpdater
 from ai_caster.vision.factory import create_vision_pipeline
@@ -207,14 +207,9 @@ class Application:
             remember=settings.account.remember,
         )
 
-        licensing_backend = (
-            HttpLicensingBackend(settings.licensing.server_url)
-            if settings.licensing.server_url
-            else OfflineLicensingBackend()
-        )
         self.licensing = LicensingClient(
             self.event_bus,
-            licensing_backend,
+            create_licensing_backend(settings.licensing, settings.account),
             device_id=self.device_id,
             cache=LicenseCache(self.paths.cache_dir / "license.json"),
             offline_cache_days=settings.licensing.offline_cache_days,
@@ -233,14 +228,9 @@ class Application:
             cache_dir=self.paths.cache_dir,
         )
 
-        sync_backend = (
-            HttpSyncBackend(settings.sync.server_url)
-            if settings.sync.server_url
-            else NullSyncBackend()
-        )
         self.sync = SettingsSyncClient(
             self.event_bus,
-            sync_backend,
+            create_sync_backend(settings.sync, settings.account),
             self.settings_manager,
             self.auth,
             self.licensing,

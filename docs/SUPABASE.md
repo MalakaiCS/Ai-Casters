@@ -72,12 +72,31 @@ URL/key are missing, the app safely falls back to offline auth.
 
 ---
 
-## 5. (Optional) Move licensing & settings sync onto Supabase
+## 5. (Optional) Back licensing & settings sync with Supabase
 
-The app already has pluggable licensing and cloud-sync backends. To back them with
-Supabase Postgres, create the tables below (**SQL Editor → New query → Run**). RLS
-ensures each user only sees their own rows. Wiring the app's licensing/sync clients
-to these tables is a small follow-up (ask and it can be added).
+Licensing (subscription tier + devices) and cloud settings-sync can run on your
+Supabase project too. This is **built in** — you just create the tables and switch
+the providers on.
+
+**a. Create the tables.** Run the SQL below in **SQL Editor → New query → Run**.
+RLS ensures each user only sees their own rows.
+
+**b. Turn the providers on** in `settings.json` (they reuse the Account
+`supabase_url` + `supabase_anon_key`, so no extra keys):
+
+```json
+{
+  "licensing": { "provider": "supabase" },
+  "sync": { "provider": "supabase", "enabled": true, "auto_sync": true }
+}
+```
+
+The licensing client then reads the signed-in user's `profiles.tier` (and
+registers/lists their devices); the sync client reads/writes their
+`user_settings.settings` row. Both authenticate with the user's access token, so
+**RLS** is what secures the data — never a database password. Cloud sync also
+requires the `CLOUD_SYNC` entitlement (Studio tier), so set that user's
+`profiles.tier` to `studio` to exercise it.
 
 ```sql
 -- Per-user profile with subscription tier. Created automatically on sign-up.
@@ -132,10 +151,10 @@ create policy "settings are owned by user"
   on public.user_settings for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 ```
 
-With those in place, the licensing client can read `profiles.tier` (via PostgREST
-at `/rest/v1/profiles`) and the settings-sync client can read/write
-`user_settings.settings` — all authenticated with the signed-in user's access
-token and enforced by RLS.
+With those tables in place and the providers switched on (step 5b), the licensing
+client reads `profiles.tier` via PostgREST at `/rest/v1/profiles` and the
+settings-sync client reads/writes `user_settings.settings` — all authenticated
+with the signed-in user's access token and enforced by RLS.
 
 ---
 

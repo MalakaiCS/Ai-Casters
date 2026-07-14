@@ -283,9 +283,15 @@ class AccountSettings(_Section):
 
 
 class LicensingSettings(_Section):
-    """Licensing client settings (Module 4, M8). No payment processing yet."""
+    """Licensing client settings (Module 4, M8). No payment processing yet.
 
-    server_url: str = Field(default="", description="Licensing API base URL (blank = offline).")
+    ``provider`` selects the backend: ``offline`` (default), ``supabase`` (reads
+    the tier/devices from the Supabase project configured in Account settings), or
+    ``http`` (custom service at ``server_url``).
+    """
+
+    provider: AccountProvider = AccountProvider.OFFLINE
+    server_url: str = Field(default="", description="Licensing API base URL (http provider).")
     offline_cache_days: int = Field(
         default=14, ge=0, description="How long a cached license stays valid offline."
     )
@@ -313,7 +319,8 @@ class SyncSettings(_Section):
     """
 
     enabled: bool = Field(default=False, description="Enable cloud settings sync.")
-    server_url: str = Field(default="", description="Sync API base URL (blank = offline no-op).")
+    provider: AccountProvider = AccountProvider.OFFLINE
+    server_url: str = Field(default="", description="Sync API base URL (http provider).")
     auto_sync: bool = Field(default=True, description="Pull on sign-in and push on change.")
 
 

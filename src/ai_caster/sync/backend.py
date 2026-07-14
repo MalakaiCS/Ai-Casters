@@ -78,3 +78,50 @@ class HttpSyncBackend:
         except HttpError as exc:  # pragma: no cover - network path
             _log.warning("Settings pull failed: %s", exc)
             return None
+
+
+class SupabaseSyncBackend:
+    """Stores the settings document in a Supabase ``user_settings`` table.
+
+    One JSONB row per account (``user_id`` primary key), upserted/read via
+    PostgREST with the anon key + the signed-in user's access token; Row Level
+    Security keeps each user to their own row (see ``docs/SUPABASE.md``).
+    """
+
+    name = "supabase"
+
+    def __init__(self, url: str, anon_key: str, *, timeout: float = 8.0) -> None:
+        self._rest = url.rstrip("/") + "/rest/v1"
+        self._anon = anon_key
+        self._timeout = timeout
+
+    def _headers(self, token: str, extra: dict[str, str] | None = None) -> dict[str, str]:
+        headers = {"apikey": self._anon, "Authorization": f"Bearer {token or self._anon}"}
+        if extra:
+            headers.update(extra)
+        return headers
+
+    def push(self, account_id: str, payload: dict[str, Any], *, token: str = "") -> None:
+        try:
+            post_json(
+                f"{self._rest}/user_settings",
+                {"user_id": account_id, "settings": payload},
+                headers=self._headers(token, {"Prefer": "resolution=merge-duplicates"}),
+                timeout=self._timeout,
+            )
+        except HttpError as exc:
+            _log.warning("Settings push failed: %s", exc)
+
+    def pull(self, account_id: str, *, token: str = "") -> dict[str, Any] | None:
+        try:
+            rows = get_json(
+                f"{self._rest}/user_settings?user_id=eq.{account_id}&select=settings",
+                headers=self._headers(token),
+                timeout=self._timeout,
+            )
+        except HttpError as exc:
+            _log.warning("Settings pull failed: %s", exc)
+            return None
+        if rows and isinstance(rows[0].get("settings"), dict):
+            return rows[0]["settings"]
+        return None
