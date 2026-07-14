@@ -121,6 +121,35 @@ passes through a `FrameUploader` (a CPU no-op today) and startup probes for a
 real accelerator so diagnostics report the truth. M4 plugs a CUDA uploader in
 here without the pipeline changing.
 
+## Milestone 4 additions
+
+### Computer vision (`vision/`)
+Vision consumes captured frames (registered as a capture callback), throttles to
+a configured analysis rate, downscales, and runs a set of **detectors** that
+share one interface: `detect(image, frame_index) -> list[VisionObservation]`.
+Because a detector is a pure function of pixels, every one is unit-tested with a
+hand-crafted NumPy array.
+
+Two families implement that interface. **Analytic** detectors use classical
+colour statistics (`vision/color.py`) over resolution-independent regions of
+interest (`vision/roi.py`) — flash, smoke, fire, kill-feed/bomb-timer activity,
+HUD presence and a heuristic scene classifier. They need no model, so they are
+always available and honest about confidence (the scene classifier caps its
+confidence and never guesses *replay* — that authoritative signal comes from the
+external replay integration in M5). The **model-backed** `OnnxObjectDetector`
+(behind the `[vision]` extra) loads *user-supplied* weights via onnxruntime; no
+weights ship with the project, and a missing runtime/model degrades gracefully to
+the analytic detectors.
+
+Per-frame observations are folded into an immutable `VisionState` and published
+at the throttled rate (never per raw frame). The **fusion** primitive
+(`vision/fusion.py`) encodes the project rule — Server > GSI > Vision >
+Inference — as a tiny tested function: `fuse_effect` lets a confirmed GSI reading
+always win and consults vision only when GSI is silent. The Match Engine attaches
+the latest `VisionState` to `LiveMatch.visual` as an **annotation**; the
+GSI-authoritative gameplay fields are never derived from vision, so uncertain
+vision can never override confirmed match data.
+
 ## Package layout
 
 ```
@@ -163,6 +192,15 @@ src/ai_caster/
 │   ├── uploader.py    # GPU-aware upload seam + GPU probe
 │   ├── factory.py     # build a FrameSource from CaptureSettings
 │   └── backends/      # monitor (mss), window, capture card (OpenCV)
+├── vision/
+│   ├── color.py       # Module 7: NumPy colour statistics (no OpenCV)
+│   ├── roi.py         # resolution-independent regions of interest
+│   ├── observations.py# VisionObservation / ObservationKind / SceneType
+│   ├── state.py       # immutable VisionState (folded cues)
+│   ├── fusion.py      # Server > GSI > Vision > Inference primitive
+│   ├── pipeline.py    # throttled frame analysis + publish
+│   ├── factory.py     # build detectors + pipeline from VisionSettings
+│   └── detectors/     # analytic detectors + optional ONNX detector
 └── ui/
     ├── main_window.py # Module 1: PySide6 shell + navigation
     ├── qt_event_bridge.py
@@ -180,7 +218,8 @@ src/ai_caster/
 
 ## Testing
 `pytest` drives everything. Domain modules (config, gsi, match, detection,
-statistics, persistence, capture) have no Qt dependency and run headless in CI.
+statistics, persistence, capture, vision) have no Qt dependency and run headless
+in CI.
 The FastAPI endpoint is tested with Starlette's `TestClient`; persistence is
 tested against a temp-file SQLite database; the Match Engine is tested end-to-end
 by publishing GSI payloads on the bus and asserting on the model, events, stats

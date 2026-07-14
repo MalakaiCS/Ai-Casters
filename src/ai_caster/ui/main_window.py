@@ -32,6 +32,7 @@ from ai_caster.ui.views.match_view import MatchView
 from ai_caster.ui.views.placeholder import PlaceholderView
 from ai_caster.ui.views.settings_view import SettingsView
 from ai_caster.ui.views.statistics_view import StatisticsView
+from ai_caster.ui.views.vision_view import VisionView
 
 _log = get_logger("ui.main")
 
@@ -66,14 +67,16 @@ class MainWindow(QMainWindow):
         self._match_view = MatchView()
         self._statistics_view = StatisticsView(application.statistics)
         self._capture_view = CaptureView(application.capture)
+        self._vision_view = VisionView(application.vision)
         self._settings_view = SettingsView(application.settings_manager)
 
-        # Live views (Milestones 1–3).
+        # Live views (Milestones 1–4).
         self._add_view("Dashboard", self._dashboard)
         self._add_view("Live GSI", self._gsi_view)
         self._add_view("Match Engine", self._match_view)
         self._add_view("Statistics", self._statistics_view)
         self._add_view("Video Capture", self._capture_view)
+        self._add_view("Computer Vision", self._vision_view)
         self._add_view("Settings", self._settings_view)
 
         # Placeholders for future modules (navigable from day one).
@@ -92,6 +95,7 @@ class MainWindow(QMainWindow):
         self._bridge.match_event.connect(self._match_view.on_match_event)
         self._bridge.capture_status.connect(self._capture_view.on_capture_status)
         self._bridge.capture_stats.connect(self._capture_view.on_capture_stats)
+        self._bridge.vision_state.connect(self._vision_view.on_vision_state)
 
         self.statusBar().showMessage(f"GSI endpoint: {application.gsi_server.address}")
 
@@ -101,7 +105,6 @@ class MainWindow(QMainWindow):
 
     def _add_placeholders(self) -> None:
         future = [
-            ("Computer Vision", "Milestone 4", "Kill feed, HUD, utility and camera understanding."),
             ("Commentary Director", "Milestone 5", "Decides who speaks, when, and broadcast flow."),
             ("Replay", "Milestone 5", "External replay events; never call replays live."),
             ("Play-by-Play AI", "Milestone 6", "High-energy original play-by-play commentary."),

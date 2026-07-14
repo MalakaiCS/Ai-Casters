@@ -20,6 +20,7 @@ from ai_caster.core.events import (
 )
 from ai_caster.detection.events import MatchEvent
 from ai_caster.match.events import MatchModelUpdated
+from ai_caster.vision.events import VisionStateUpdated
 
 
 class QtEventBridge(QObject):
@@ -32,6 +33,7 @@ class QtEventBridge(QObject):
     match_event = Signal(object)  # -> MatchEvent
     capture_status = Signal(bool, str, str)  # running, source, detail
     capture_stats = Signal(object)  # -> CaptureStats
+    vision_state = Signal(object)  # -> VisionState
 
     def __init__(self, event_bus, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -44,6 +46,7 @@ class QtEventBridge(QObject):
             event_bus.subscribe(MatchEvent, self._on_match_event),
             event_bus.subscribe(CaptureStatusChanged, self._on_capture_status),
             event_bus.subscribe(CaptureStatsUpdated, self._on_capture_stats),
+            event_bus.subscribe(VisionStateUpdated, self._on_vision_state),
         ]
 
     # These run on the publisher's (network) thread; emitting a Qt signal with a
@@ -68,6 +71,9 @@ class QtEventBridge(QObject):
 
     def _on_capture_stats(self, event: CaptureStatsUpdated) -> None:
         self.capture_stats.emit(event.stats)
+
+    def _on_vision_state(self, event: VisionStateUpdated) -> None:
+        self.vision_state.emit(event.state)
 
     def dispose(self) -> None:
         """Unsubscribe from the bus (call on shutdown)."""

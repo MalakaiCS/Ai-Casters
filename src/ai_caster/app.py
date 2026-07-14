@@ -29,6 +29,7 @@ from ai_caster.match.state import MatchStateStore
 from ai_caster.persistence.database import Database
 from ai_caster.persistence.repository import MatchRepository
 from ai_caster.statistics.engine import StatisticsEngine
+from ai_caster.vision.factory import create_vision_pipeline
 
 
 class Application:
@@ -96,6 +97,12 @@ class Application:
             uploader=create_uploader(settings.capture.use_gpu),
         )
 
+        # --- computer vision (Module 7) ----------------------------------- #
+        # Consumes captured frames; disabled by default until the operator turns
+        # it on. Attached to the capture pipeline as a frame callback.
+        self.vision = create_vision_pipeline(settings.vision, self.event_bus)
+        self.vision.attach(self.capture)
+
         # Re-apply GSI auth whenever settings change so edits take effect live.
         self.settings_manager.add_observer(self._on_settings_changed)
 
@@ -114,6 +121,7 @@ class Application:
     def stop_services(self) -> None:
         """Stop all background services and release resources."""
         self.gsi_server.stop()
+        self.vision.detach()
         if self.capture.is_running:
             self.capture.stop()
         self.match_engine.dispose()

@@ -155,14 +155,37 @@ class CaptureSettings(_Section):
 
 
 class VisionSettings(_Section):
-    """Computer-vision pipeline settings (M4). Present now for forward-compat."""
+    """Computer-vision pipeline settings (Module 7).
+
+    Disabled by default: vision analysis is heavy, so the operator turns it on
+    once a real observer feed is being captured. The analytic (classical-CV)
+    detectors need no model; an optional ONNX ``model_path`` enables the
+    model-backed object detector for production-grade accuracy.
+    """
 
     enabled: bool = False
     use_gpu: bool = True
-    capture_fps: int = Field(default=60, ge=1, le=240)
+    process_fps: int = Field(
+        default=12, ge=1, le=120, description="Vision analysis rate (throttled below capture FPS)."
+    )
     min_confidence: float = Field(
         default=0.6, ge=0.0, le=1.0, description="Discard detections below this confidence."
     )
+    downscale_width: int = Field(
+        default=640, ge=64, le=3840, description="Analyse frames downscaled to this width."
+    )
+
+    # Per-detector toggles.
+    detect_flash: bool = True
+    detect_smoke: bool = True
+    detect_fire: bool = True
+    detect_kill_feed: bool = True
+    detect_bomb_timer: bool = True
+    detect_hud: bool = True
+    detect_scene: bool = True
+
+    # Optional ONNX object-detection model (weights are provided by the user).
+    model_path: str = Field(default="", description="Path to an ONNX detection model (optional).")
 
 
 class AISettings(_Section):

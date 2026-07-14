@@ -17,8 +17,13 @@ import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import IntEnum
+from typing import TYPE_CHECKING
 
-from ai_caster.gsi.models import GameState
+if TYPE_CHECKING:
+    # Imported for annotations only. A runtime import here would create a cycle
+    # (gsi.__init__ -> gsi.receiver -> match.state), so we keep it type-only;
+    # `from __future__ import annotations` makes every annotation a string.
+    from ai_caster.gsi.models import GameState
 
 
 class DataSource(IntEnum):

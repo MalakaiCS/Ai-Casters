@@ -78,7 +78,7 @@ Deliverables:
 - Unit + integration tests for the model, detector, statistics, persistence and
   the end-to-end engine.
 
-### ✅ Milestone 3 — Video Capture *(current)*
+### ✅ Milestone 3 — Video Capture
 **Goal:** capture the CS2 observer feed into a timed, GPU-aware frame pipeline —
 the input the M4 computer-vision system consumes.
 
@@ -100,10 +100,29 @@ Deliverables:
 - Unit + threaded tests for the frame, source, buffer, timing, pipeline and
   factory (incl. clean errors when native deps are absent).
 
-### Milestone 4 — Computer Vision
-Kill feed, HUD, bomb timer, scoreboard, utility (smoke/flash/molotov), camera
-transitions, replay/player/crowd-camera detection — all with confidence scores.
-Vision-based event detection fused into the Match Engine (server > GSI > vision).
+### ✅ Milestone 4 — Computer Vision *(current)*
+**Goal:** watch the captured feed and produce confidence-scored observations,
+fused into the Match Engine without ever overriding confirmed GSI.
+
+Deliverables:
+- **Detector interface + analytic detectors** (classical CV in NumPy, no model,
+  always available): flash, smoke, molotov/fire, kill-feed activity, bomb-timer
+  visibility, HUD presence, and a heuristic scene/camera classifier — each
+  emitting a `VisionObservation` with an honest confidence.
+- **Resolution-independent ROI system** and NumPy colour statistics.
+- **Optional ONNX object detector** behind the `[vision]` extra: loads
+  user-supplied weights (none ship with the project); a bad path degrades to the
+  analytic detectors instead of crashing.
+- **Vision pipeline**: consumes captured frames as a callback, throttles to a
+  configured analysis rate, downscales, runs detectors, folds results into an
+  immutable `VisionState`, and publishes it (disabled by default).
+- **Priority-of-truth fusion**: a tested `fuse`/`fuse_effect` primitive encoding
+  Server > GSI > Vision > Inference; the engine attaches the latest `VisionState`
+  to the match model as an **annotation only** — GSI fields are never overridden.
+- **Config + UI**: expanded `VisionSettings` (per-detector toggles, model path)
+  and a Computer Vision view showing scene, cues and confidences.
+- Unit tests for colour, ROI, every detector, state assembly, fusion, the
+  pipeline (analysis/throttle/attach), the ONNX guard paths and engine fusion.
 
 ### Milestone 5 — Commentary Director + Replay Integration
 Broadcast-flow controller (who speaks, when, interruptions, handoffs, silence,

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
+from typing import Any
 
 from ai_caster.gsi.models import GameState
 
@@ -165,6 +166,12 @@ class LiveMatch:
     momentum: Momentum = field(default_factory=Momentum)
     round_importance: float = 0.0
     series_importance: float = 0.0
+
+    # Optional vision annotation (a VisionState). GSI-authoritative gameplay
+    # fields above are never derived from this — vision only *annotates* the
+    # model (scene/effect cues), honouring Server > GSI > Vision > Inference.
+    # Typed loosely to keep the match module independent of the vision package.
+    visual: Any = None
 
     # -- convenience ---------------------------------------------------- #
     @property
@@ -362,8 +369,13 @@ def build_live_match(
     *,
     history: tuple[RoundRecord, ...] = (),
     rounds_to_win: int = DEFAULT_ROUNDS_TO_WIN,
+    vision: Any = None,
 ) -> LiveMatch:
-    """Assemble the complete :class:`LiveMatch` from a parsed GSI payload."""
+    """Assemble the complete :class:`LiveMatch` from a parsed GSI payload.
+
+    ``vision`` is an optional annotation (a ``VisionState``) attached as-is; it
+    never influences the GSI-authoritative fields.
+    """
     players = build_players(state)
     ct = _build_team(state, Side.CT, players)
     t = _build_team(state, Side.T, players)
@@ -385,4 +397,5 @@ def build_live_match(
         momentum=momentum,
         round_importance=compute_round_importance(ct, t, series, rounds_to_win),
         series_importance=compute_series_importance(series),
+        visual=vision,
     )

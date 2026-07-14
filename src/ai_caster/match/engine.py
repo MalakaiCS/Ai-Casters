@@ -43,6 +43,7 @@ from ai_caster.match.model import (
 )
 from ai_caster.persistence.repository import MatchRepository
 from ai_caster.statistics.engine import StatisticsEngine
+from ai_caster.vision.events import VisionStateUpdated
 
 _log = get_logger("match.engine")
 
@@ -72,7 +73,11 @@ class MatchStateEngine:
         self._live: LiveMatch | None = None
         self._current_map: str | None = None
         self._match_id: int | None = None
-        self._unsubscribe = event_bus.subscribe(GSIStateUpdated, self._on_gsi_event)
+        self._vision_state = None  # latest VisionState annotation (GSI stays authoritative)
+        self._unsubscribes = [
+            event_bus.subscribe(GSIStateUpdated, self._on_gsi_event),
+            event_bus.subscribe(VisionStateUpdated, self._on_vision_event),
+        ]
 
     # ------------------------------------------------------------------ #
     # Accessors
@@ -91,7 +96,8 @@ class MatchStateEngine:
         return self._match_id
 
     def dispose(self) -> None:
-        self._unsubscribe()
+        for unsubscribe in self._unsubscribes:
+            unsubscribe()
 
     # ------------------------------------------------------------------ #
     # Core
@@ -100,15 +106,25 @@ class MatchStateEngine:
         if event.game_state is not None:
             self.on_gsi_update(event.game_state)
 
+    def _on_vision_event(self, event: VisionStateUpdated) -> None:
+        # Store the latest vision annotation; it is attached to the model on the
+        # next GSI update. Vision never overrides GSI-confirmed fields.
+        with self._lock:
+            self._vision_state = event.state
+
     def on_gsi_update(self, state: GameState) -> list[MatchEvent]:
         """Process one GSI payload. Returns the events detected (for tests)."""
         with self._lock:
             self._handle_map_change(state)
             events = self._detector.detect(state)
+            vision = self._vision_state
 
             # Build the model from the current payload with existing history.
             live = build_live_match(
-                state, history=tuple(self._history), rounds_to_win=self._rounds_to_win
+                state,
+                history=tuple(self._history),
+                rounds_to_win=self._rounds_to_win,
+                vision=vision,
             )
 
             # Authoritative + event-derived statistics.
@@ -128,7 +144,10 @@ class MatchStateEngine:
             # Rebuild if history changed so momentum/importance reflect it now.
             if any(isinstance(e, RoundEnded) for e in events):
                 live = build_live_match(
-                    state, history=tuple(self._history), rounds_to_win=self._rounds_to_win
+                    state,
+                    history=tuple(self._history),
+                    rounds_to_win=self._rounds_to_win,
+                    vision=vision,
                 )
 
             self._live = live

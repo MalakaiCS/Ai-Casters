@@ -36,6 +36,10 @@ capture = [
     "pygetwindow>=0.0.9",
 ]
 
+# Model-backed computer vision (Module 7). Optional: the analytic detectors run
+# on NumPy alone; this adds the ONNX runtime for a user-supplied detection model.
+vision = ["onnxruntime>=1.17"]
+
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",

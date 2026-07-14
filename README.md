@@ -52,6 +52,19 @@ human caster required.
 - **Video Capture view** — start/stop, live FPS/dropped/latency stats and a
   low-rate frame preview.
 
+**Milestone 4 — Computer Vision**
+
+- **Analytic detectors** (classical CV in NumPy, no model) — flash, smoke,
+  molotov/fire, kill-feed activity, bomb-timer visibility, HUD presence and a
+  heuristic scene/camera classifier, each with an honest confidence score.
+- **Optional ONNX object detector** — loads your own weights via the `[vision]`
+  extra (`pip install -e ".[vision]"`); no weights ship with the project.
+- **Vision pipeline** — consumes captured frames (throttled), produces an
+  immutable `VisionState`, and publishes it. Disabled until you enable it.
+- **Priority-of-truth fusion** — vision annotates the match model but, per
+  Server > GSI > Vision > Inference, never overrides confirmed GSI.
+- **Computer Vision view** — live scene classification and cue confidences.
+
 ## Quick start
 
 ```bash
