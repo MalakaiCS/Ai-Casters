@@ -26,6 +26,7 @@ from ai_caster.app import Application
 from ai_caster.core.logging import get_logger
 from ai_caster.ui.qt_event_bridge import QtEventBridge
 from ai_caster.ui.views.capture_view import CaptureView
+from ai_caster.ui.views.commentary_view import CommentaryView
 from ai_caster.ui.views.dashboard import DashboardView
 from ai_caster.ui.views.director_view import DirectorView
 from ai_caster.ui.views.gsi_view import GSIView
@@ -71,12 +72,13 @@ class MainWindow(QMainWindow):
         self._capture_view = CaptureView(application.capture)
         self._vision_view = VisionView(application.vision)
         self._director_view = DirectorView(application.director)
+        self._commentary_view = CommentaryView(application.play_by_play, application.analyst)
         self._replay_view = ReplayView(
             application.replay_receiver, application.replay_server.address
         )
         self._settings_view = SettingsView(application.settings_manager)
 
-        # Live views (Milestones 1–5).
+        # Live views (Milestones 1–6).
         self._add_view("Dashboard", self._dashboard)
         self._add_view("Live GSI", self._gsi_view)
         self._add_view("Match Engine", self._match_view)
@@ -84,6 +86,7 @@ class MainWindow(QMainWindow):
         self._add_view("Video Capture", self._capture_view)
         self._add_view("Computer Vision", self._vision_view)
         self._add_view("Commentary Director", self._director_view)
+        self._add_view("Commentary AIs", self._commentary_view)
         self._add_view("Replay", self._replay_view)
         self._add_view("Settings", self._settings_view)
 
@@ -107,6 +110,7 @@ class MainWindow(QMainWindow):
         self._bridge.directive_issued.connect(self._director_view.on_directive)
         self._bridge.replay_state.connect(self._director_view.on_replay_state)
         self._bridge.replay_state.connect(self._replay_view.on_replay_state)
+        self._bridge.commentary_line.connect(self._commentary_view.on_commentary_line)
 
         self.statusBar().showMessage(f"GSI endpoint: {application.gsi_server.address}")
 
@@ -116,8 +120,6 @@ class MainWindow(QMainWindow):
 
     def _add_placeholders(self) -> None:
         future = [
-            ("Play-by-Play AI", "Milestone 6", "High-energy original play-by-play commentary."),
-            ("Analyst AI", "Milestone 6", "Longer analytical, strategic commentary."),
             ("Voice Engine", "Milestone 7", "Two independent voice channels + monitor mix."),
             ("Audio & OBS", "Milestone 7", "Windows device routing and OBS WebSocket."),
             ("Account & License", "Milestone 8", "Login, licensing, devices, cloud settings."),

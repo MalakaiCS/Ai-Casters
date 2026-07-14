@@ -189,12 +189,22 @@ class VisionSettings(_Section):
 
 
 class AISettings(_Section):
-    """Commentary AI provider/model selection (M6)."""
+    """Commentary AI provider/model selection (Module 11/12).
+
+    Defaults to the deterministic MOCK provider so commentary runs offline with
+    no API key. Selecting a real provider uses the official SDK; per-role model
+    ids (blank = the provider's default) let play-by-play run on a faster model
+    than the analyst if desired.
+    """
 
     provider: AIProvider = AIProvider.MOCK
     play_by_play_model: str = Field(default="", description="Model id for the play-by-play AI.")
     analyst_model: str = Field(default="", description="Model id for the analyst AI.")
     api_key: str = Field(default="", description="Provider API key (blank uses env/local).")
+    base_url: str = Field(default="", description="Override base URL (OpenAI-compatible/local).")
+    max_tokens: int = Field(
+        default=90, ge=16, le=1024, description="Max tokens per generated commentary line."
+    )
 
 
 class CommentarySettings(_Section):

@@ -175,6 +175,27 @@ replaced by an explicit silence decision. `is_live_broadcast` ranks the external
 replay signal above the vision replay *hint*, consistent with Server > GSI >
 Vision > Inference.
 
+## Milestone 6 additions
+
+### Commentary AIs (`commentary/`)
+Two `CommentaryGenerator` instances — one per speaker role — subscribe to the
+Director's `CommentaryDirectiveIssued` events and turn the directives addressed
+to their role into `CommentaryLine`s. Generation runs on a **worker thread** with
+a bounded queue: a slow (network) provider never blocks the event bus or the
+match/vision pipelines, and when the queue is full the oldest directive is
+dropped so commentary stays current rather than lagging.
+
+All backends share one `LLMProvider` interface. The request carries both a
+rendered prompt (for API models) and the structured facts (for the template
+mock), so the **Mock** provider — the default — generates believable, varied
+lines purely from confirmed match facts. That makes it offline, deterministic,
+unit-testable, and structurally incapable of inventing facts or imitating a real
+caster. Optional **Anthropic** and **OpenAI/local** providers (the `[ai]` extra)
+enforce the same rules via their system prompt; the Anthropic path omits sampling
+params and `thinking` as Opus 4.8 requires. Robustness is layered: a missing SDK
+degrades to Mock at startup, and a provider exception falls back to Mock
+mid-line, so an unattended broadcast keeps talking.
+
 ## Package layout
 
 ```
@@ -234,6 +255,12 @@ src/ai_caster/
 │   ├── models.py      # Module 15: ReplayState / ReplayType
 │   ├── receiver.py    # framework-agnostic replay-event ingest
 │   └── server.py      # FastAPI replay transport
+├── commentary/
+│   ├── lines.py       # Modules 11/12: CommentaryLine + event
+│   ├── prompts.py     # facts-only, no-imitation prompt builders
+│   ├── generator.py   # per-role generator (worker thread)
+│   ├── factory.py     # build a provider from AISettings
+│   └── providers/     # mock (default), anthropic, openai/local
 └── ui/
     ├── main_window.py # Module 1: PySide6 shell + navigation
     ├── qt_event_bridge.py
@@ -251,8 +278,8 @@ src/ai_caster/
 
 ## Testing
 `pytest` drives everything. Domain modules (config, gsi, match, detection,
-statistics, persistence, capture, vision, director, replay) have no Qt
-dependency and run headless in CI.
+statistics, persistence, capture, vision, director, replay, commentary) have no
+Qt dependency and run headless in CI.
 The FastAPI endpoint is tested with Starlette's `TestClient`; persistence is
 tested against a temp-file SQLite database; the Match Engine is tested end-to-end
 by publishing GSI payloads on the bus and asserting on the model, events, stats

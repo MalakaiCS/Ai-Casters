@@ -12,6 +12,7 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, Signal
 
 from ai_caster.capture.events import CaptureStatsUpdated, CaptureStatusChanged
+from ai_caster.commentary.lines import CommentaryLineGenerated
 from ai_caster.core.events import (
     Event,
     GSIConnectionChanged,
@@ -38,6 +39,7 @@ class QtEventBridge(QObject):
     vision_state = Signal(object)  # -> VisionState
     directive_issued = Signal(object)  # -> CommentaryDirective
     replay_state = Signal(object, str)  # ReplayState, transition
+    commentary_line = Signal(object)  # -> CommentaryLine
 
     def __init__(self, event_bus, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -53,6 +55,7 @@ class QtEventBridge(QObject):
             event_bus.subscribe(VisionStateUpdated, self._on_vision_state),
             event_bus.subscribe(CommentaryDirectiveIssued, self._on_directive),
             event_bus.subscribe(ReplayStateChanged, self._on_replay_state),
+            event_bus.subscribe(CommentaryLineGenerated, self._on_commentary_line),
         ]
 
     # These run on the publisher's (network) thread; emitting a Qt signal with a
@@ -86,6 +89,9 @@ class QtEventBridge(QObject):
 
     def _on_replay_state(self, event: ReplayStateChanged) -> None:
         self.replay_state.emit(event.state, event.transition)
+
+    def _on_commentary_line(self, event: CommentaryLineGenerated) -> None:
+        self.commentary_line.emit(event.line)
 
     def dispose(self) -> None:
         """Unsubscribe from the bus (call on shutdown)."""

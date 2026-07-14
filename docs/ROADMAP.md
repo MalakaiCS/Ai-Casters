@@ -124,7 +124,7 @@ Deliverables:
 - Unit tests for colour, ROI, every detector, state assembly, fusion, the
   pipeline (analysis/throttle/attach), the ONNX guard paths and engine fusion.
 
-### ✅ Milestone 5 — Commentary Director + Replay Integration *(current)*
+### ✅ Milestone 5 — Commentary Director + Replay Integration
 **Goal:** an internal controller that governs broadcast flow (it decides, it
 never speaks), plus authoritative replay integration that enforces the hard rule
 *never describe replay footage as live.*
@@ -148,9 +148,26 @@ Deliverables:
 - Unit tests for replay (models/receiver/HTTP), the pure policy, and the
   Director's routing/interruption/handoff/silence/replay behaviour.
 
-### Milestone 6 — Play-by-Play AI + Analyst AI
-Two independent commentary generators with pluggable AI providers. Original
-wording, no fact invention, no imitation of identifiable real casters.
+### ✅ Milestone 6 — Play-by-Play AI + Analyst AI *(current)*
+**Goal:** two independent commentary generators that turn the Director's
+directives into spoken words — original wording, no fact invention, no imitation
+of identifiable real casters.
+
+Deliverables:
+- **Two generators** (Modules 11 & 12), one per speaker role, each consuming the
+  directives addressed to it and generating on a **worker thread** so a slow
+  provider never blocks the pipelines (stale directives are dropped, not queued).
+- **Pluggable providers** behind one interface: a deterministic **Mock**
+  template engine (default, offline, fact-safe by construction) plus optional
+  **Anthropic** and **OpenAI/local** backends behind the `[ai]` extra. A missing
+  SDK degrades to Mock; a provider error falls back to Mock mid-broadcast.
+- **Prompts** that encode the hard rules (facts-only, original wording, no caster
+  imitation, output only the line) — and Anthropic usage that omits sampling
+  params/thinking as those models require.
+- **Config + UI**: provider/model/base-url/max-tokens settings and a Commentary
+  view with the two live transcripts and per-channel enable toggles.
+- Unit tests for the mock, prompts, factory fallback, and generator routing/
+  fallback/worker behaviour.
 
 ### Milestone 7 — Voice Engine, Audio Routing, OBS Integration
 Two fully independent voice channels (queue/interruption/volume/mute/DSP each),

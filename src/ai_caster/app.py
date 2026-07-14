@@ -17,11 +17,14 @@ import logging
 from ai_caster.capture.factory import create_frame_source
 from ai_caster.capture.pipeline import CapturePipeline
 from ai_caster.capture.uploader import create_uploader
+from ai_caster.commentary.factory import create_provider
+from ai_caster.commentary.generator import CommentaryGenerator
 from ai_caster.config.manager import SettingsManager
 from ai_caster.config.models import AppSettings
 from ai_caster.core.events import EventBus
 from ai_caster.core.logging import configure_logging, get_logger
 from ai_caster.core.paths import AppPaths, get_app_paths
+from ai_caster.director.directives import Speaker
 from ai_caster.director.director import CommentaryDirector
 from ai_caster.gsi.receiver import GSIReceiver
 from ai_caster.gsi.server import GSIServer
@@ -122,6 +125,28 @@ class Application:
             treat_unknown_as_live=settings.replay.treat_unknown_as_live,
         )
 
+        # --- commentary AIs (Modules 11 & 12) ----------------------------- #
+        # Two independent generators sharing one provider; each turns the
+        # directives addressed to its role into spoken lines on a worker thread.
+        provider = create_provider(settings.ai)
+        language = settings.commentary.language.value
+        self.play_by_play = CommentaryGenerator(
+            self.event_bus,
+            provider,
+            Speaker.PLAY_BY_PLAY,
+            model=settings.ai.play_by_play_model,
+            language=language,
+            max_tokens=settings.ai.max_tokens,
+        )
+        self.analyst = CommentaryGenerator(
+            self.event_bus,
+            provider,
+            Speaker.ANALYST,
+            model=settings.ai.analyst_model,
+            language=language,
+            max_tokens=settings.ai.max_tokens,
+        )
+
         # Re-apply GSI auth whenever settings change so edits take effect live.
         self.settings_manager.add_observer(self._on_settings_changed)
 
@@ -138,6 +163,8 @@ class Application:
         self.gsi_server.start()
         if self.settings.replay.enabled:
             self.replay_server.start()
+        self.play_by_play.start()
+        self.analyst.start()
         self._log.info("Core services started")
 
     def stop_services(self) -> None:
@@ -148,6 +175,8 @@ class Application:
         self.vision.detach()
         if self.capture.is_running:
             self.capture.stop()
+        self.play_by_play.dispose()
+        self.analyst.dispose()
         self.director.dispose()
         self.match_engine.dispose()
         if self.database is not None:

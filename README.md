@@ -77,6 +77,16 @@ human caster required.
 - **Director & Replay views** — live/replay state, a directive feed, and local
   replay test controls.
 
+**Milestone 6 — Play-by-Play AI + Analyst AI**
+
+- **Two independent commentary generators** turn directives into spoken lines on
+  worker threads — facts-only, original wording, never imitating a real caster.
+- **Pluggable providers** — a deterministic offline **Mock** (default) plus
+  optional **Anthropic** and **OpenAI/local** backends (`pip install -e ".[ai]"`);
+  a missing SDK or provider error degrades to Mock so the broadcast keeps talking.
+- **Commentary view** — live play-by-play and analyst transcripts with per-channel
+  toggles.
+
 ## Quick start
 
 ```bash
