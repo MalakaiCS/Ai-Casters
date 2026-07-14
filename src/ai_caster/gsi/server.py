@@ -103,6 +103,10 @@ class GSIServer(Service):
             port=self._port,
             log_level="warning",
             access_log=False,
+            # Don't let uvicorn install its own logging: its colour formatter calls
+            # sys.stdout.isatty(), which crashes in a windowed (no-console) build
+            # where sys.stdout is None. We own logging (Module 20) already.
+            log_config=None,
         )
         self._server = uvicorn.Server(config)
         # install_signal_handlers only works on the main thread.

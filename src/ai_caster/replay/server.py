@@ -75,7 +75,14 @@ class ReplayServer(Service):
         import uvicorn
 
         config = uvicorn.Config(
-            self._app, host=self._host, port=self._port, log_level="warning", access_log=False
+            self._app,
+            host=self._host,
+            port=self._port,
+            log_level="warning",
+            access_log=False,
+            # See GSIServer: uvicorn's default logging crashes a windowed build
+            # (sys.stdout is None). We configure logging ourselves.
+            log_config=None,
         )
         self._server = uvicorn.Server(config)
         self._server.install_signal_handlers = lambda: None

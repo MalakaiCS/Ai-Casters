@@ -20,7 +20,7 @@ check before going live. Commands assume the repo root with the venv active.
 
 ## B. Automated checks (must all pass)
 
-- [ ] **Tests green** — `python -m pytest -q` → `316 passed`
+- [ ] **Tests green** — `python -m pytest -q` → `319 passed`
 - [ ] **Lint clean** — `ruff check src tests` → *All checks passed!*
 - [ ] **Format clean** — `ruff format --check src tests`
 - [ ] **UI byte-compiles** (Qt can't load headless) —
