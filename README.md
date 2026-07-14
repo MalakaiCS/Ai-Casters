@@ -10,7 +10,7 @@ human caster required.
 > [`docs/ROADMAP.md`](docs/ROADMAP.md) for the milestone plan and
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design.
 
-## Status — Milestones 1–7
+## Status — Milestones 1–8
 
 **Milestone 1 — Foundation**
 
@@ -103,6 +103,24 @@ human caster required.
   needs nothing.
 - **Voice, Audio & OBS view** — per-channel enable/mute/volume with live
   queue/spoken counters and OBS connection/scene status.
+
+**Milestone 8 — Accounts, Licensing, Auto Updater**
+
+- **Authentication** — sign in/out with session persistence ("remember me") and
+  automatic restore on startup. The default backend authenticates **locally**, so
+  the account surface works fully offline; point it at a real service to go online.
+- **Licensing** — subscription tiers (Free/Pro/Studio) mapped to feature
+  entitlements, device management, and a time-boxed **offline cache** so an
+  unreachable service never interrupts a broadcast. The default backend issues a
+  local perpetual Free license — **no payment processing**.
+- **Auto updater** — checks a release manifest, announces newer versions, and can
+  download + checksum-verify an installer (it surfaces updates rather than
+  silently installing). Offline by default.
+- **Cloud settings sync** — configuration follows the operator between machines,
+  gated on the cloud-sync entitlement and sign-in; incoming settings are validated
+  before they are applied.
+- **Account, License & Updates view** — sign-in, current tier and entitlements,
+  registered devices, and update status.
 
 ## Quick start
 

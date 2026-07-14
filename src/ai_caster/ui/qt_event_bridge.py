@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal
 
+from ai_caster.auth.events import AuthStateChanged
 from ai_caster.capture.events import CaptureStatsUpdated, CaptureStatusChanged
 from ai_caster.commentary.lines import CommentaryLineGenerated
 from ai_caster.core.events import (
@@ -21,8 +22,10 @@ from ai_caster.core.events import (
 )
 from ai_caster.detection.events import MatchEvent
 from ai_caster.director.directives import CommentaryDirectiveIssued
+from ai_caster.licensing.events import LicenseStateChanged
 from ai_caster.match.events import MatchModelUpdated
 from ai_caster.replay.events import ReplayStateChanged
+from ai_caster.updater.events import UpdateAvailable
 from ai_caster.vision.events import VisionStateUpdated
 
 
@@ -40,6 +43,9 @@ class QtEventBridge(QObject):
     directive_issued = Signal(object)  # -> CommentaryDirective
     replay_state = Signal(object, str)  # ReplayState, transition
     commentary_line = Signal(object)  # -> CommentaryLine
+    auth_state = Signal(bool, object, str)  # authenticated, account, detail
+    license_state = Signal(str, str, bool)  # status, tier, offline
+    update_available = Signal(object, str, str, bool)  # info, current, latest, mandatory
 
     def __init__(self, event_bus, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -56,6 +62,9 @@ class QtEventBridge(QObject):
             event_bus.subscribe(CommentaryDirectiveIssued, self._on_directive),
             event_bus.subscribe(ReplayStateChanged, self._on_replay_state),
             event_bus.subscribe(CommentaryLineGenerated, self._on_commentary_line),
+            event_bus.subscribe(AuthStateChanged, self._on_auth_state),
+            event_bus.subscribe(LicenseStateChanged, self._on_license_state),
+            event_bus.subscribe(UpdateAvailable, self._on_update_available),
         ]
 
     # These run on the publisher's (network) thread; emitting a Qt signal with a
@@ -92,6 +101,17 @@ class QtEventBridge(QObject):
 
     def _on_commentary_line(self, event: CommentaryLineGenerated) -> None:
         self.commentary_line.emit(event.line)
+
+    def _on_auth_state(self, event: AuthStateChanged) -> None:
+        self.auth_state.emit(event.authenticated, event.account, event.detail)
+
+    def _on_license_state(self, event: LicenseStateChanged) -> None:
+        self.license_state.emit(event.status, event.tier, event.offline)
+
+    def _on_update_available(self, event: UpdateAvailable) -> None:
+        self.update_available.emit(
+            event.update, event.current_version, event.latest_version, event.mandatory
+        )
 
     def dispose(self) -> None:
         """Unsubscribe from the bus (call on shutdown)."""

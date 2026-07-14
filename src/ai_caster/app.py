@@ -15,6 +15,10 @@ from __future__ import annotations
 import importlib.util
 import logging
 
+from ai_caster import __version__
+from ai_caster.auth.backend import HttpAuthBackend, OfflineAuthBackend
+from ai_caster.auth.client import AuthClient
+from ai_caster.auth.store import SessionStore
 from ai_caster.capture.factory import create_frame_source
 from ai_caster.capture.pipeline import CapturePipeline
 from ai_caster.capture.uploader import create_uploader
@@ -23,12 +27,16 @@ from ai_caster.commentary.generator import CommentaryGenerator
 from ai_caster.config.manager import SettingsManager
 from ai_caster.config.models import AppSettings
 from ai_caster.core.events import EventBus
+from ai_caster.core.identity import get_or_create_device_id
 from ai_caster.core.logging import configure_logging, get_logger
 from ai_caster.core.paths import AppPaths, get_app_paths
 from ai_caster.director.directives import Speaker
 from ai_caster.director.director import CommentaryDirector
 from ai_caster.gsi.receiver import GSIReceiver
 from ai_caster.gsi.server import GSIServer
+from ai_caster.licensing.backend import HttpLicensingBackend, OfflineLicensingBackend
+from ai_caster.licensing.cache import LicenseCache
+from ai_caster.licensing.client import LicensingClient
 from ai_caster.match.engine import MatchStateEngine
 from ai_caster.match.state import MatchStateStore
 from ai_caster.obs.controller import NullOBSController, WebSocketOBSController
@@ -38,6 +46,10 @@ from ai_caster.persistence.repository import MatchRepository
 from ai_caster.replay.receiver import ReplayReceiver
 from ai_caster.replay.server import ReplayServer
 from ai_caster.statistics.engine import StatisticsEngine
+from ai_caster.sync.backend import HttpSyncBackend, NullSyncBackend
+from ai_caster.sync.client import SettingsSyncClient
+from ai_caster.updater.backend import HttpUpdateBackend, NullUpdateBackend
+from ai_caster.updater.updater import AutoUpdater
 from ai_caster.vision.factory import create_vision_pipeline
 from ai_caster.voice.engine import VoiceEngine
 
@@ -174,6 +186,66 @@ class Application:
             replay_scene=settings.audio_obs.replay_scene,
         )
 
+        # --- accounts, licensing, updates, sync (Modules 3, 4, 19; M8) ---- #
+        # Each subsystem defaults to an offline backend so the whole account
+        # surface works with no server; an HTTP backend is selected only when the
+        # matching service URL is configured. A stable per-install device id ties
+        # sessions and license seats together.
+        self.device_id = get_or_create_device_id(self.paths.config_dir)
+
+        auth_backend = (
+            HttpAuthBackend(settings.account.server_url)
+            if settings.account.server_url
+            else OfflineAuthBackend()
+        )
+        self.auth = AuthClient(
+            self.event_bus,
+            auth_backend,
+            device_id=self.device_id,
+            store=SessionStore(self.paths.config_dir / "session.json"),
+            remember=settings.account.remember,
+        )
+
+        licensing_backend = (
+            HttpLicensingBackend(settings.licensing.server_url)
+            if settings.licensing.server_url
+            else OfflineLicensingBackend()
+        )
+        self.licensing = LicensingClient(
+            self.event_bus,
+            licensing_backend,
+            device_id=self.device_id,
+            cache=LicenseCache(self.paths.cache_dir / "license.json"),
+            offline_cache_days=settings.licensing.offline_cache_days,
+        )
+
+        update_backend = (
+            HttpUpdateBackend(settings.updater.manifest_url)
+            if settings.updater.manifest_url
+            else NullUpdateBackend()
+        )
+        self.updater = AutoUpdater(
+            self.event_bus,
+            update_backend,
+            current_version=__version__,
+            channel=settings.updater.channel,
+            cache_dir=self.paths.cache_dir,
+        )
+
+        sync_backend = (
+            HttpSyncBackend(settings.sync.server_url)
+            if settings.sync.server_url
+            else NullSyncBackend()
+        )
+        self.sync = SettingsSyncClient(
+            self.event_bus,
+            sync_backend,
+            self.settings_manager,
+            self.auth,
+            self.licensing,
+            enabled=settings.sync.enabled,
+        )
+
         # Re-apply GSI auth whenever settings change so edits take effect live.
         self.settings_manager.add_observer(self._on_settings_changed)
 
@@ -195,7 +267,36 @@ class Application:
         self.voice.start()
         if self.settings.audio_obs.enabled:
             self.obs.connect()
+        self._start_account_services()
         self._log.info("Core services started")
+
+    def _start_account_services(self) -> None:
+        """Restore sign-in, validate the license, sync settings and check for
+        updates — each guarded so a failure never blocks the broadcast."""
+        if self.settings.account.auto_login:
+            try:
+                self.auth.restore()
+            except Exception:  # noqa: BLE001 - sign-in must not block startup
+                self._log.exception("Session restore failed")
+
+        account_id = self.auth.account.user_id if self.auth.account else ""
+        token = self.auth.session.access_token if self.auth.session else ""
+        try:
+            self.licensing.validate(account_id, token=token)
+        except Exception:  # noqa: BLE001 - fall through to offline/free
+            self._log.exception("License validation failed")
+
+        if self.settings.sync.enabled and self.settings.sync.auto_sync:
+            try:
+                self.sync.pull()
+            except Exception:  # noqa: BLE001 - sync is best-effort
+                self._log.exception("Settings sync (pull) failed")
+
+        if self.settings.updater.enabled and self.settings.updater.auto_check:
+            try:
+                self.updater.check()
+            except Exception:  # noqa: BLE001 - update check is best-effort
+                self._log.exception("Update check failed")
 
     def stop_services(self) -> None:
         """Stop all background services and release resources."""

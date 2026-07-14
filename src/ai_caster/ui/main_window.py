@@ -25,6 +25,7 @@ from ai_caster import __app_name__, __version__
 from ai_caster.app import Application
 from ai_caster.core.logging import get_logger
 from ai_caster.ui.qt_event_bridge import QtEventBridge
+from ai_caster.ui.views.account_view import AccountView
 from ai_caster.ui.views.capture_view import CaptureView
 from ai_caster.ui.views.commentary_view import CommentaryView
 from ai_caster.ui.views.dashboard import DashboardView
@@ -78,6 +79,9 @@ class MainWindow(QMainWindow):
         self._replay_view = ReplayView(
             application.replay_receiver, application.replay_server.address
         )
+        self._account_view = AccountView(
+            application.auth, application.licensing, application.updater
+        )
         self._settings_view = SettingsView(application.settings_manager)
 
         # Live views (Milestones 1–6).
@@ -91,6 +95,7 @@ class MainWindow(QMainWindow):
         self._add_view("Commentary AIs", self._commentary_view)
         self._add_view("Voice, Audio & OBS", self._voice_view)
         self._add_view("Replay", self._replay_view)
+        self._add_view("Account & License", self._account_view)
         self._add_view("Settings", self._settings_view)
 
         # Placeholders for future modules (navigable from day one).
@@ -116,6 +121,9 @@ class MainWindow(QMainWindow):
         self._bridge.commentary_line.connect(self._commentary_view.on_commentary_line)
         self._bridge.commentary_line.connect(self._voice_view.on_commentary_line)
         self._bridge.replay_state.connect(self._voice_view.on_replay_state)
+        self._bridge.auth_state.connect(self._account_view.on_auth_state)
+        self._bridge.license_state.connect(self._account_view.on_license_state)
+        self._bridge.update_available.connect(self._account_view.on_update_available)
 
         self.statusBar().showMessage(f"GSI endpoint: {application.gsi_server.address}")
 
@@ -125,7 +133,6 @@ class MainWindow(QMainWindow):
 
     def _add_placeholders(self) -> None:
         future = [
-            ("Account & License", "Milestone 8", "Login, licensing, devices, cloud settings."),
             ("Diagnostics", "Milestone 9", "Latency, performance and log inspection."),
         ]
         for title, milestone, description in future:

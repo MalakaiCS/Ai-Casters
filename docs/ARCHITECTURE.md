@@ -240,6 +240,55 @@ when it ends — reusing the same replay signal the Director uses to enforce "ne
 live during replay", so the picture and the words stay consistent. OBS errors are
 swallowed and logged rather than allowed to disrupt the broadcast.
 
+## Milestone 8 additions
+
+### Accounts, licensing, updates, sync (`auth/`, `licensing/`, `updater/`, `sync/`)
+The account subsystems all share one shape: a thin **client** that holds state and
+publishes events, driving a **backend** behind an interface whose **default
+implementation is fully offline**. That is what lets the whole account surface
+run, demo and test with no server and no network, while a configured service URL
+swaps in an HTTP backend without the client changing. All four HTTP backends share
+one dependency-free helper (`core/http.py`, stdlib `urllib`) so the package gains
+no runtime HTTP dependency, and a stable per-install **device id**
+(`core/identity.py`) ties sessions and license seats together.
+
+- **Auth** (`auth/`): `AuthClient` owns the current `AuthSession`, orchestrating
+  login/logout/refresh through an `AuthBackend`. The default `OfflineAuthBackend`
+  maps any non-empty credentials to a deterministic local account (explicitly not
+  a security boundary — a real deployment configures the HTTP backend). A
+  `SessionStore` persists the session for "remember me"; the client restores and,
+  if expired, refreshes it on startup. Sign-in state rides the bus as
+  `AuthStateChanged`.
+- **Licensing** (`licensing/`): tiers → entitlements live in **one table**
+  (`tiers.py`), so feature gating everywhere else is a lookup, not scattered
+  conditionals; higher tiers are supersets of lower ones. `LicensingClient`
+  validates online, and on failure falls back to a **time-boxed offline cache**
+  (`cache.py`) so an unreachable service can't lock the operator out mid-broadcast
+  — but only within both the license's own expiry and the configured grace window.
+  It also lists/deregisters the account's devices (flagging the current one) and
+  exposes `is_entitled(feature)` as the app's gate. Changes publish
+  `LicenseStateChanged`.
+- **Updater** (`updater/`): a dependency-free semantic `Version` (`version.py`)
+  drives the comparison; `AutoUpdater.check()` asks the backend for the latest
+  release and, only when it is genuinely newer, publishes `UpdateAvailable`. It can
+  download and **checksum-verify** an installer but deliberately does *not* silently
+  install and relaunch — on Windows that is an installer/OS concern and doing it
+  unattended mid-broadcast would be user-hostile, so the updater surfaces the
+  update and hands off. The default `NullUpdateBackend` reports nothing, so the app
+  never claims a phantom update.
+- **Cloud settings sync** (`sync/`): `SettingsSyncClient` pushes/pulls the settings
+  document to a per-account store so configuration follows the operator between
+  machines. It is gated on the `CLOUD_SYNC` entitlement **and** sign-in; when
+  either is absent it is a silent no-op rather than an error. Crucially, a pulled
+  document is applied **through the settings manager**, which validates it, so a
+  malformed or hostile remote payload can never corrupt the local config.
+
+The composition root constructs each client with its offline-or-HTTP backend
+(chosen purely by whether the matching service URL is set) and, on
+`start_services`, restores sign-in, validates the license, pulls synced settings
+and checks for updates — each wrapped so a failure degrades to offline/free rather
+than blocking the broadcast.
+
 ## Package layout
 
 ```
@@ -316,6 +365,25 @@ src/ai_caster/
 ├── obs/
 │   ├── controller.py  # Module 16: OBSController (Null / WebSocket [obs])
 │   └── integration.py # replay-driven scene switching
+├── auth/
+│   ├── models.py      # Module 3: Account / AuthSession / AuthResult
+│   ├── backend.py     # AuthBackend: Offline (default) / HTTP
+│   ├── store.py       # SessionStore ("remember me")
+│   └── client.py      # AuthClient (login/logout/refresh/restore)
+├── licensing/
+│   ├── models.py      # Module 4: tiers, features, License, Device
+│   ├── tiers.py       # tier -> entitlements table
+│   ├── backend.py     # LicensingBackend: Offline (default) / HTTP
+│   ├── cache.py       # time-boxed offline license cache
+│   └── client.py      # LicensingClient (validate + device management)
+├── updater/
+│   ├── version.py     # Module 19: dependency-free semantic version
+│   ├── models.py      # UpdateInfo / UpdateCheck
+│   ├── backend.py     # UpdateBackend: Null (default) / HTTP manifest
+│   └── updater.py     # AutoUpdater (check / download + checksum)
+├── sync/
+│   ├── backend.py     # SyncBackend: Null (default) / HTTP
+│   └── client.py      # SettingsSyncClient (entitlement-gated push/pull)
 └── ui/
     ├── main_window.py # Module 1: PySide6 shell + navigation
     ├── qt_event_bridge.py
@@ -338,10 +406,14 @@ src/ai_caster/
 ## Testing
 `pytest` drives everything. Domain modules (config, gsi, match, detection,
 statistics, persistence, capture, vision, director, replay, commentary, voice,
-obs) have no Qt dependency and run headless in CI. The voice DSP is tested as
-pure functions; channels/engine are driven through real worker-thread lifecycles
-with the synthetic TTS and null sinks; OBS is tested with the null controller by
-publishing replay events and asserting the scene sequence.
+obs, auth, licensing, updater, sync) have no Qt dependency and run headless in CI.
+The voice DSP is tested as pure functions; channels/engine are driven through real
+worker-thread lifecycles with the synthetic TTS and null sinks; OBS is tested with
+the null controller by publishing replay events and asserting the scene sequence.
+The account subsystems are tested entirely through their offline backends —
+deterministic login, session persistence, license cache + grace window, tier
+entitlements, device management, version/checksum logic, and entitlement-gated
+sync push/pull-and-apply — so no test touches the network.
 The FastAPI endpoint is tested with Starlette's `TestClient`; persistence is
 tested against a temp-file SQLite database; the Match Engine is tested end-to-end
 by publishing GSI payloads on the bus and asserting on the model, events, stats

@@ -254,14 +254,52 @@ class CommentarySettings(_Section):
     )
 
 
+class AccountSettings(_Section):
+    """Authentication client settings (Module 3, M8).
+
+    Blank ``server_url`` selects the offline backend, which authenticates locally
+    so the account surface works with no server. ``remember`` persists the session
+    across restarts; ``auto_login`` restores it on startup.
+    """
+
+    server_url: str = Field(default="", description="Account API base URL (blank = offline).")
+    remember: bool = Field(default=True, description="Persist the session across restarts.")
+    auto_login: bool = Field(default=True, description="Restore a saved session on startup.")
+
+
 class LicensingSettings(_Section):
-    """Account / licensing client settings (M8). No payment processing yet."""
+    """Licensing client settings (Module 4, M8). No payment processing yet."""
 
     server_url: str = Field(default="", description="Licensing API base URL (blank = offline).")
     offline_cache_days: int = Field(
         default=14, ge=0, description="How long a cached license stays valid offline."
     )
     device_name: str = Field(default="", description="Friendly name for this device.")
+
+
+class UpdaterSettings(_Section):
+    """Auto-updater settings (Module 19, M8).
+
+    Blank ``manifest_url`` selects the offline (null) backend, which never reports
+    an update. ``{channel}`` in the URL is substituted with ``channel``.
+    """
+
+    enabled: bool = Field(default=True, description="Allow update checks.")
+    manifest_url: str = Field(default="", description="Release manifest URL (blank = offline).")
+    channel: str = Field(default="stable", description="Release channel to track.")
+    auto_check: bool = Field(default=True, description="Check for updates on startup.")
+
+
+class SyncSettings(_Section):
+    """Cloud settings-sync settings (M8).
+
+    Requires the CLOUD_SYNC entitlement and sign-in. Blank ``server_url`` selects
+    the local no-op backend.
+    """
+
+    enabled: bool = Field(default=False, description="Enable cloud settings sync.")
+    server_url: str = Field(default="", description="Sync API base URL (blank = offline no-op).")
+    auto_sync: bool = Field(default=True, description="Pull on sign-in and push on change.")
 
 
 class StatisticsSettings(_Section):
@@ -309,7 +347,10 @@ class AppSettings(_Section):
     vision: VisionSettings = Field(default_factory=VisionSettings)
     ai: AISettings = Field(default_factory=AISettings)
     commentary: CommentarySettings = Field(default_factory=CommentarySettings)
+    account: AccountSettings = Field(default_factory=AccountSettings)
     licensing: LicensingSettings = Field(default_factory=LicensingSettings)
+    updater: UpdaterSettings = Field(default_factory=UpdaterSettings)
+    sync: SyncSettings = Field(default_factory=SyncSettings)
     statistics: StatisticsSettings = Field(default_factory=StatisticsSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     hotkeys: HotkeySettings = Field(default_factory=HotkeySettings)

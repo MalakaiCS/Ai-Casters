@@ -169,7 +169,7 @@ Deliverables:
 - Unit tests for the mock, prompts, factory fallback, and generator routing/
   fallback/worker behaviour.
 
-### ✅ Milestone 7 — Voice Engine, Audio Routing, OBS Integration *(current)*
+### ✅ Milestone 7 — Voice Engine, Audio Routing, OBS Integration
 **Goal:** speak the generated commentary through two fully independent voices,
 route each voice to its own audio output, and drive OBS scene changes from the
 authoritative replay state.
@@ -205,9 +205,40 @@ Deliverables:
   headless full-stack check (commentary lines → both voices + monitor; replay →
   OBS scene flip).
 
-### Milestone 8 — Accounts, Licensing, Auto Updater
-Auth client, license validation, subscription tiers, device management, offline
-license cache, cloud settings sync, automatic updates. (No payment processing.)
+### ✅ Milestone 8 — Accounts, Licensing, Auto Updater *(current)*
+**Goal:** sign the operator in, resolve what their subscription unlocks, keep
+their configuration in sync, and surface application updates — all fully usable
+offline, with no payment processing.
+
+Deliverables:
+- **Authentication Client** (Module 3): sign-in/out and session management behind
+  an `AuthBackend` interface. The default backend authenticates **locally**
+  (offline, deterministic, no server) so the account surface works everywhere; an
+  HTTP backend targets a real account service. The client persists the session
+  for "remember me" and restores/refreshes it on startup.
+- **Licensing Client** (Module 4): license validation with **subscription tiers**
+  (Free/Pro/Studio) mapped to **feature entitlements** via one table, **device
+  management** (list/deregister seats, current device flagged), and a **time-boxed
+  offline cache** so an unreachable service never locks the operator out
+  mid-broadcast. The default backend issues a local perpetual Free license.
+- **Auto Updater** (Module 19): compares the running build to a release manifest,
+  announces newer versions on the bus, and can download + **checksum-verify** an
+  installer. It surfaces updates rather than silently installing — the honest
+  boundary for an unattended tool. The default backend reports no updates offline.
+- **Cloud settings sync**: pushes/pulls the settings document to a per-account
+  store so configuration follows the operator between machines. Gated on the
+  `CLOUD_SYNC` entitlement and sign-in; pulled documents are validated through the
+  settings manager before they are applied. Default backend is a local no-op.
+- **Stable device identity**: a per-install id persisted under the config dir,
+  tying sessions and license seats together.
+- **Config + UI**: Account/Licensing/Updater/Sync settings sections and an
+  **Account, License & Updates** view (sign-in, tier + entitlements, devices,
+  update status) replacing the M8 placeholder.
+- Unit tests for the offline auth/licensing backends, session store, license
+  cache + grace window, entitlement tiers, device management, version compare +
+  checksum, and sync gating/push/pull-and-apply — plus a headless full-stack
+  check and the composition-root wiring. All backends degrade gracefully and no
+  payment processing is present.
 
 ### Milestone 9 — Full Desktop UI & UX polish
 Complete every view, hotkeys, diagnostics dashboards, long-session stability.

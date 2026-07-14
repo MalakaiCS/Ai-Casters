@@ -31,3 +31,23 @@ def test_settings_change_reapplies_gsi_auth(isolated_home):
     with pytest.raises(GSIAuthError):
         app.gsi_receiver.handle_payload(make_gsi_payload(token="stale"))
     app.gsi_receiver.handle_payload(make_gsi_payload(token="rotated-token"))
+
+
+def test_application_wires_account_services(isolated_home):
+    from ai_caster.licensing.models import SubscriptionTier
+
+    app = Application()
+    # A stable device id was created under config.
+    assert app.device_id
+    assert (app.paths.config_dir / "device.json").exists()
+
+    # Offline defaults: sign in locally, validate the (free) license.
+    assert app.auth.login("caster@example.com", "pw")
+    account_id = app.auth.account.user_id
+    check = app.licensing.validate(account_id)
+    assert check.status.value == "active"
+    assert app.licensing.tier is SubscriptionTier.FREE
+
+    # No manifest configured -> updater reports up to date; sync is a no-op.
+    assert not app.updater.check().available
+    assert not app.sync.push()  # free tier lacks the cloud-sync entitlement
