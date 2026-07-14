@@ -7,6 +7,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to create (e.g. v0.1.0)"
+        required: true
+        default: "v0.1.0"
 
 permissions:
   contents: write
@@ -45,12 +51,26 @@ jobs:
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
             /DAppVersion=${{ steps.ver.outputs.version }} packaging\installer.iss
 
+      - name: Resolve release tag
+        id: tag
+        shell: pwsh
+        run: |
+          # Tag comes from the pushed ref, or the manual-dispatch input.
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $tag = "${{ github.event.inputs.version }}"
+          } else {
+            $tag = "${env:GITHUB_REF_NAME}"
+          }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
       - name: Publish GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${env:GITHUB_REF_NAME}" `
+          # gh creates the tag at the current commit if it does not exist yet.
+          gh release create "${{ steps.tag.outputs.tag }}" `
             "dist/installer/AICasters-Setup.exe" `
+            --target "${env:GITHUB_SHA}" `
             --title "AI Casters ${{ steps.ver.outputs.version }}" `
             --notes "Autonomous AI commentary for Counter-Strike 2. Download **AICasters-Setup.exe** below and run it to install. See docs/SETUP.md for configuration."
