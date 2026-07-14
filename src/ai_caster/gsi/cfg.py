@@ -83,7 +83,5 @@ def write_gsi_config(
     target_dir = Path(directory)
     target_dir.mkdir(parents=True, exist_ok=True)
     path = target_dir / filename
-    path.write_text(
-        build_gsi_config(host=host, port=port, auth_token=auth_token), encoding="utf-8"
-    )
+    path.write_text(build_gsi_config(host=host, port=port, auth_token=auth_token), encoding="utf-8")
     return path

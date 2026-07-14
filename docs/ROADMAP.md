@@ -39,7 +39,7 @@ and an internal event bus. **No module depends directly on UI code.**
 
 ## Milestones
 
-### ✅ Milestone 1 — Foundation, Shell, Configuration, GSI Receiver *(this milestone)*
+### ✅ Milestone 1 — Foundation, Shell, Configuration, GSI Receiver
 **Goal:** a running desktop application skeleton that can receive and display
 live CS2 Game State Integration data, with a validated configuration system and
 production-grade logging.
@@ -59,10 +59,24 @@ Deliverables:
 - CS2 GSI **config-file generator** (the `.cfg` you drop into the game).
 - Unit tests for config, GSI parsing, the GSI endpoint and the event bus.
 
-### Milestone 2 — Match State Engine, Statistics, Event Detection (GSI-based)
-Single source of truth combining GSI + history; round/economy/momentum tracking;
-GSI-derived event detection (kills, plants, defuses, clutch situations);
-statistics accumulation; SQLite persistence.
+### ✅ Milestone 2 — Match State Engine, Statistics, Event Detection (GSI-based) *(current)*
+**Goal:** turn the latest-snapshot store into the full single source of truth.
+
+Deliverables:
+- **Match State Engine** (Module 8): rebuilds the complete `LiveMatch` model on
+  every payload (round, score, series, economy/buys, players, bomb, observed
+  player) with round **history**, and derived **momentum**, **round importance**
+  and **series importance**. Honours the Server > GSI > Vision > Inference rule.
+- **Event Detection** (Module 9, GSI portion): diff-based detection of kills,
+  deaths, entries, trades, bomb plant/defuse/explode, round start/end, score
+  changes, clutch start/win, and match start/end — with confidence scores.
+- **Statistics Engine** (Module 17): per-player K/D/A, ADR, HS%, opening kills,
+  trades, clutches won and multi-kills from the authoritative snapshot + events.
+- **SQLite persistence**: matches, rounds, events and player stats, with a
+  migration-ready schema and a repository that keeps all SQL in one place.
+- Two new live UI views (Match Engine, Statistics) plus an event feed.
+- Unit + integration tests for the model, detector, statistics, persistence and
+  the end-to-end engine.
 
 ### Milestone 3 — Video Capture
 Observer-feed capture (window/monitor/capture-card), frame pipeline, timing,

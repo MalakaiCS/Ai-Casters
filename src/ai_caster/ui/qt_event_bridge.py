@@ -17,6 +17,8 @@ from ai_caster.core.events import (
     GSIStateUpdated,
     SettingsChanged,
 )
+from ai_caster.detection.events import MatchEvent
+from ai_caster.match.events import MatchModelUpdated
 
 
 class QtEventBridge(QObject):
@@ -25,6 +27,8 @@ class QtEventBridge(QObject):
     gsi_state_updated = Signal(object)  # -> GameState
     gsi_connection_changed = Signal(bool, str)
     settings_changed = Signal(str)
+    match_updated = Signal(object)  # -> LiveMatch
+    match_event = Signal(object)  # -> MatchEvent
 
     def __init__(self, event_bus, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -33,6 +37,8 @@ class QtEventBridge(QObject):
             event_bus.subscribe(GSIStateUpdated, self._on_gsi_state),
             event_bus.subscribe(GSIConnectionChanged, self._on_connection),
             event_bus.subscribe(SettingsChanged, self._on_settings),
+            event_bus.subscribe(MatchModelUpdated, self._on_match_updated),
+            event_bus.subscribe(MatchEvent, self._on_match_event),
         ]
 
     # These run on the publisher's (network) thread; emitting a Qt signal with a
@@ -45,6 +51,12 @@ class QtEventBridge(QObject):
 
     def _on_settings(self, event: SettingsChanged) -> None:
         self.settings_changed.emit(event.section)
+
+    def _on_match_updated(self, event: MatchModelUpdated) -> None:
+        self.match_updated.emit(event.match)
+
+    def _on_match_event(self, event: MatchEvent) -> None:
+        self.match_event.emit(event)
 
     def dispose(self) -> None:
         """Unsubscribe from the bus (call on shutdown)."""

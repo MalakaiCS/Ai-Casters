@@ -10,9 +10,9 @@ human caster required.
 > [`docs/ROADMAP.md`](docs/ROADMAP.md) for the milestone plan and
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design.
 
-## Status — Milestone 1 (Foundation)
+## Status — Milestones 1 & 2
 
-Implemented so far:
+**Milestone 1 — Foundation**
 
 - **Project foundation** — installable `ai_caster` package, `src/` layout,
   packaging, tooling, and a headless-CI-friendly test suite.
@@ -26,6 +26,20 @@ Implemented so far:
   parses GSI payloads, stores the latest live snapshot, and publishes updates on
   the event bus.
 - **GSI config generator** — produces the CS2 `.cfg` you drop into the game.
+
+**Milestone 2 — Match State Engine, Statistics, Event Detection**
+
+- **Match State Engine** — the single source of truth: a complete live match
+  model (round, score, series, economy/buys, players, bomb) with round history
+  and derived **momentum**, **round importance** and **series importance**.
+- **Event Detection (GSI)** — kills, deaths, entries, trades, bomb
+  plant/defuse/explode, round start/end, score changes, clutch start/win and
+  match start/end, each with a confidence score.
+- **Statistics Engine** — K/D/A, ADR, HS%, opening kills, trades, clutches and
+  multi-kills, from the authoritative snapshot plus events.
+- **SQLite persistence** — matches, rounds, events and player stats, with a
+  migration-ready schema.
+- Live **Match Engine** and **Statistics** views with a real-time event feed.
 
 ## Quick start
 

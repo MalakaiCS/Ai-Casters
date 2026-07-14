@@ -90,9 +90,7 @@ class GSIView(QWidget):
         self._payloads += 1
         self._map.setText(state.map_name or "—")
         self._phase.setText((state.map.phase if state.map else None) or "—")
-        self._round.setText(
-            "—" if state.round_number is None else str(state.round_number + 1)
-        )
+        self._round.setText("—" if state.round_number is None else str(state.round_number + 1))
         ct = "—" if state.ct_score is None else str(state.ct_score)
         t = "—" if state.t_score is None else str(state.t_score)
         self._score.setText(f"{ct} – {t}")

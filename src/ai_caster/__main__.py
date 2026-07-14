@@ -56,7 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_cfg.set_defaults(func=_cmd_gsi_config)
 
     p_ver = sub.add_parser("version", help="Print the version and exit.")
-    p_ver.set_defaults(func=lambda _a: (print(f"AI Esports Caster {__version__}") or 0))
+    p_ver.set_defaults(func=lambda _a: print(f"AI Esports Caster {__version__}") or 0)
 
     return parser
 

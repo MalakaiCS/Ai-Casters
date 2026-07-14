@@ -66,6 +66,36 @@ Vision > Inference.** In Milestone 1 only GSI exists, but the `MatchStateStore`
 already records the *source* and *confidence* of every field so later fusion
 logic can honour this ordering without a rewrite.
 
+## Milestone 2 additions
+
+### Match State Engine (`match/engine.py`)
+`MatchStateEngine` subscribes to `GSIStateUpdated` and, per payload: runs the
+detector, rebuilds the immutable `LiveMatch` model (`match/model.py`) carrying
+round *history* forward, accumulates statistics, persists, and republishes a
+`MatchModelUpdated` plus each detected event. It is the single source of truth.
+It runs on the GSI network thread, guards shared state with a lock, and only
+ever hands *immutable* `LiveMatch` snapshots to readers — so the UI never sees a
+half-updated model. Momentum, round importance and series importance are pure
+functions of the model, making them trivially testable.
+
+### Event detection (`detection/`)
+The `EventDetector` is a **stateful diff** over consecutive payloads. GSI gives
+cumulative kills and current health but never links killer→victim, so deaths are
+detected reliably (health→0), kills are credited to whoever's cumulative count
+rose, and the two are paired only when a tick is unambiguous; uncertain
+inferences carry a sub-1.0 `confidence`. Detected events subclass the core
+`Event`, so they ride the same bus and route to any subscriber (UI now; the
+Commentary Director in M5).
+
+### Statistics (`statistics/`) and persistence (`persistence/`)
+The `StatisticsEngine` reads authoritative cumulative fields from the snapshot
+and folds event/round-derived numbers (opening kills, trades, clutches, damage,
+multi-kills) on top. Persistence uses stdlib `sqlite3` behind a `MatchRepository`
+so all SQL lives in one place, writes are parameterised, and a PostgreSQL
+implementation can replace it later without touching call sites. The connection
+is shared across threads and serialised with a lock; WAL mode keeps writes from
+blocking reads during long broadcasts.
+
 ## Package layout
 
 ```
@@ -86,11 +116,23 @@ src/ai_caster/
 │   ├── server.py      # FastAPI transport running on a background thread
 │   └── cfg.py         # CS2 GSI .cfg generator
 ├── match/
-│   └── state.py       # MatchStateStore (foundation for M2 Match Engine)
+│   ├── state.py       # MatchStateStore (lightweight latest snapshot)
+│   ├── model.py       # Module 8: LiveMatch model + momentum/importance
+│   ├── engine.py      # Module 8: MatchStateEngine (single source of truth)
+│   └── events.py      # MatchModelUpdated bus event
+├── detection/
+│   ├── events.py      # Module 9: detected MatchEvent types
+│   └── detectors.py   # Module 9: stateful GSI diff detector
+├── statistics/
+│   ├── models.py      # Module 17: PlayerStats / MatchStatistics
+│   └── engine.py      # Module 17: StatisticsEngine
+├── persistence/
+│   ├── database.py    # SQLite connection + schema (migration-ready)
+│   └── repository.py  # MatchRepository (all SQL in one place)
 └── ui/
     ├── main_window.py # Module 1: PySide6 shell + navigation
     ├── qt_event_bridge.py
-    └── views/         # dashboard, live GSI monitor, settings, placeholders
+    └── views/         # dashboard, GSI, match engine, statistics, settings, …
 ```
 
 ## Threading model
@@ -100,6 +142,9 @@ src/ai_caster/
   UI updates always happen on the Qt thread.
 
 ## Testing
-`pytest` drives everything. Domain modules (config, gsi, events, match) have no
-Qt or network dependency and run headless in CI. The FastAPI endpoint is tested
-with Starlette's `TestClient`.
+`pytest` drives everything. Domain modules (config, gsi, match, detection,
+statistics, persistence) have no Qt or network dependency and run headless in
+CI. The FastAPI endpoint is tested with Starlette's `TestClient`; persistence is
+tested against a temp-file SQLite database; the Match Engine is tested end-to-end
+by publishing GSI payloads on the bus and asserting on the model, events, stats
+and stored rows.

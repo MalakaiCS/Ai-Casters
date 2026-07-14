@@ -21,7 +21,11 @@ from ai_caster.core.logging import configure_logging, get_logger
 from ai_caster.core.paths import AppPaths, get_app_paths
 from ai_caster.gsi.receiver import GSIReceiver
 from ai_caster.gsi.server import GSIServer
+from ai_caster.match.engine import MatchStateEngine
 from ai_caster.match.state import MatchStateStore
+from ai_caster.persistence.database import Database
+from ai_caster.persistence.repository import MatchRepository
+from ai_caster.statistics.engine import StatisticsEngine
 
 
 class Application:
@@ -62,6 +66,22 @@ class Application:
             port=settings.gsi.port,
         )
 
+        # --- persistence (M2, optional) ----------------------------------- #
+        self.database: Database | None = None
+        repository: MatchRepository | None = None
+        if settings.statistics.enabled and settings.statistics.persist:
+            self.database = Database(self.paths.data_dir / "ai_caster.sqlite")
+            repository = MatchRepository(self.database)
+
+        # --- statistics + match engine (Modules 17, 8, 9) ----------------- #
+        self.statistics = StatisticsEngine()
+        self.match_engine = MatchStateEngine(
+            self.event_bus,
+            self.statistics,
+            repository=repository,
+            persist=settings.statistics.persist,
+        )
+
         # Re-apply GSI auth whenever settings change so edits take effect live.
         self.settings_manager.add_observer(self._on_settings_changed)
 
@@ -80,6 +100,9 @@ class Application:
     def stop_services(self) -> None:
         """Stop all background services and release resources."""
         self.gsi_server.stop()
+        self.match_engine.dispose()
+        if self.database is not None:
+            self.database.close()
         self._log.info("Core services stopped")
 
     # ------------------------------------------------------------------ #
