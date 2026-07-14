@@ -12,7 +12,8 @@ independent AI voice channels (play-by-play + analyst) routed into OBS — with 
 human caster required.
 
 > This is a commercial product under active development. See
-> [`docs/SETUP.md`](docs/SETUP.md) to get running, the
+> [`docs/SETUP.md`](docs/SETUP.md) to get running,
+> [`docs/SUPABASE.md`](docs/SUPABASE.md) for the Supabase login/sign-up setup,
 > [`docs/CHECKLIST.md`](docs/CHECKLIST.md) to verify an install,
 > [`docs/ROADMAP.md`](docs/ROADMAP.md) for the milestone plan, and
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design.

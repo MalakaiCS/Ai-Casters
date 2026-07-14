@@ -180,8 +180,11 @@ monitor mix.
 
 ## 10. Account, licensing & updates
 
-- **Account & License** view: sign in (the default backend authenticates locally
-  and offline), see your tier and entitlements, and manage devices.
+- **Account & License** view: **Create account** / **Sign in**, see your tier and
+  entitlements, and manage devices. By default the backend authenticates locally
+  and offline. To use **Supabase** for real login/sign-up, set
+  **Settings → Account** `provider = supabase` with your project URL + anon key —
+  see [`SUPABASE.md`](SUPABASE.md).
 - Subscription tiers gate features (e.g. cloud sync is Studio-tier). Licensing has
   an offline grace cache so an unreachable service won't interrupt a broadcast.
   **No payment processing** is included.

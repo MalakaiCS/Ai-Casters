@@ -16,8 +16,8 @@ import importlib.util
 import logging
 
 from ai_caster import __version__
-from ai_caster.auth.backend import HttpAuthBackend, OfflineAuthBackend
 from ai_caster.auth.client import AuthClient
+from ai_caster.auth.factory import create_auth_backend
 from ai_caster.auth.store import SessionStore
 from ai_caster.broadcast.controller import BroadcastController
 from ai_caster.capture.factory import create_frame_source
@@ -199,14 +199,9 @@ class Application:
         # sessions and license seats together.
         self.device_id = get_or_create_device_id(self.paths.config_dir)
 
-        auth_backend = (
-            HttpAuthBackend(settings.account.server_url)
-            if settings.account.server_url
-            else OfflineAuthBackend()
-        )
         self.auth = AuthClient(
             self.event_bus,
-            auth_backend,
+            create_auth_backend(settings.account),
             device_id=self.device_id,
             store=SessionStore(self.paths.config_dir / "session.json"),
             remember=settings.account.remember,

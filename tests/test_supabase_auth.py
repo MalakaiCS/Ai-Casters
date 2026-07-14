@@ -1,0 +1,182 @@
+"""Tests for the Supabase auth backend and the auth-backend factory.
+
+Supabase's REST transport is monkeypatched, so these exercise the real request
+shaping and response parsing without any network.
+"""
+
+from __future__ import annotations
+
+import ai_caster.auth.backend as backend_mod
+from ai_caster.auth.backend import (
+    HttpAuthBackend,
+    OfflineAuthBackend,
+    SupabaseAuthBackend,
+)
+from ai_caster.auth.factory import create_auth_backend
+from ai_caster.config.models import AccountProvider, AccountSettings
+from ai_caster.core.http import HttpError
+
+URL = "https://demo.supabase.co"
+KEY = "anon-key-123"
+DEVICE = "dev-1"
+
+_USER = {
+    "id": "uuid-1",
+    "email": "caster@example.com",
+    "user_metadata": {"name": "Kai", "tier": "pro"},
+}
+
+
+def _backend() -> SupabaseAuthBackend:
+    return SupabaseAuthBackend(URL, KEY)
+
+
+class _FakeTransport:
+    """Stands in for core.http.post_json; records calls and returns canned data."""
+
+    def __init__(self, response=None, error: HttpError | None = None) -> None:
+        self.response = response if response is not None else {}
+        self.error = error
+        self.calls: list[tuple] = []
+
+    def __call__(self, url, payload=None, *, headers=None, timeout=8.0):
+        self.calls.append((url, payload, headers))
+        if self.error is not None:
+            raise self.error
+        return self.response
+
+
+# --- pure helpers ---------------------------------------------------------- #
+def test_headers_include_apikey_and_bearer():
+    b = _backend()
+    headers = b._headers()
+    assert headers["apikey"] == KEY
+    assert headers["Authorization"] == f"Bearer {KEY}"
+    # A user token overrides the bearer.
+    assert b._headers("user-tok")["Authorization"] == "Bearer user-tok"
+
+
+def test_account_from_user_maps_fields():
+    account = SupabaseAuthBackend._account_from_user(_USER)
+    assert account.user_id == "uuid-1"
+    assert account.email == "caster@example.com"
+    assert account.display_name == "Kai"
+    assert account.tier == "pro"
+
+
+def test_account_display_falls_back_to_email_local_part():
+    account = SupabaseAuthBackend._account_from_user({"id": "x", "email": "abc@d.com"})
+    assert account.display_name == "abc"
+    assert account.tier == "free"
+
+
+def test_session_from_token_none_without_access_token():
+    assert _backend()._session_from_token({"user": _USER}) is None
+
+
+def test_session_from_token_builds_session():
+    session = _backend()._session_from_token(
+        {"access_token": "at", "refresh_token": "rt", "expires_in": 3600, "user": _USER}
+    )
+    assert session is not None
+    assert session.access_token == "at"
+    assert session.refresh_token == "rt"
+    assert not session.is_expired()
+    assert session.account.tier == "pro"
+
+
+# --- login ----------------------------------------------------------------- #
+def test_login_success(monkeypatch):
+    fake = _FakeTransport({"access_token": "at", "refresh_token": "rt", "user": _USER})
+    monkeypatch.setattr(backend_mod, "post_json", fake)
+    result = _backend().login("caster@example.com", "pw", device_id=DEVICE)
+    assert result.ok and result.session is not None
+    assert result.session.account.email == "caster@example.com"
+    # Hit the password-grant endpoint with the anon apikey.
+    url, payload, headers = fake.calls[0]
+    assert url.endswith("/auth/v1/token?grant_type=password")
+    assert payload == {"email": "caster@example.com", "password": "pw"}
+    assert headers["apikey"] == KEY
+
+
+def test_login_rejects_empty_credentials():
+    assert not _backend().login("", "", device_id=DEVICE).ok
+
+
+def test_login_bad_credentials_is_friendly(monkeypatch):
+    fake = _FakeTransport(error=HttpError("bad", status=400))
+    monkeypatch.setattr(backend_mod, "post_json", fake)
+    result = _backend().login("caster@example.com", "wrong", device_id=DEVICE)
+    assert not result.ok
+    assert "Invalid email or password" in result.error
+
+
+# --- signup ---------------------------------------------------------------- #
+def test_signup_auto_confirmed_returns_session(monkeypatch):
+    fake = _FakeTransport({"access_token": "at", "refresh_token": "rt", "user": _USER})
+    monkeypatch.setattr(backend_mod, "post_json", fake)
+    result = _backend().signup("caster@example.com", "pw", device_id=DEVICE)
+    assert result.ok and result.session is not None
+    assert fake.calls[0][0].endswith("/auth/v1/signup")
+
+
+def test_signup_confirmation_required(monkeypatch):
+    # GoTrue returns the created user (no token) when email confirmation is on.
+    fake = _FakeTransport({"id": "uuid-1", "email": "caster@example.com"})
+    monkeypatch.setattr(backend_mod, "post_json", fake)
+    result = _backend().signup("caster@example.com", "pw", device_id=DEVICE)
+    assert result.ok and result.session is None  # created, awaiting confirmation
+
+
+def test_signup_existing_email_is_friendly(monkeypatch):
+    fake = _FakeTransport(error=HttpError("exists", status=422))
+    monkeypatch.setattr(backend_mod, "post_json", fake)
+    result = _backend().signup("caster@example.com", "pw", device_id=DEVICE)
+    assert not result.ok
+    assert "already registered" in result.error
+
+
+# --- refresh / logout ------------------------------------------------------ #
+def test_refresh_success(monkeypatch):
+    fake = _FakeTransport({"access_token": "at2", "refresh_token": "rt2", "user": _USER})
+    monkeypatch.setattr(backend_mod, "post_json", fake)
+    from ai_caster.auth.models import Account, AuthSession
+
+    session = AuthSession(
+        account=Account("uuid-1", "caster@example.com"), access_token="old", refresh_token="rt"
+    )
+    result = _backend().refresh(session, device_id=DEVICE)
+    assert result.ok and result.session.access_token == "at2"
+    assert fake.calls[0][0].endswith("/auth/v1/token?grant_type=refresh_token")
+
+
+def test_logout_uses_bearer_token(monkeypatch):
+    fake = _FakeTransport({})
+    monkeypatch.setattr(backend_mod, "post_json", fake)
+    from ai_caster.auth.models import Account, AuthSession
+
+    session = AuthSession(account=Account("uuid-1", "caster@example.com"), access_token="user-tok")
+    _backend().logout(session)
+    _url, _payload, headers = fake.calls[0]
+    assert headers["Authorization"] == "Bearer user-tok"
+
+
+# --- factory --------------------------------------------------------------- #
+def test_factory_selects_supabase_when_configured():
+    settings = AccountSettings(
+        provider=AccountProvider.SUPABASE, supabase_url=URL, supabase_anon_key=KEY
+    )
+    assert isinstance(create_auth_backend(settings), SupabaseAuthBackend)
+
+
+def test_factory_falls_back_when_supabase_incomplete():
+    settings = AccountSettings(provider=AccountProvider.SUPABASE)  # no url/key
+    assert isinstance(create_auth_backend(settings), OfflineAuthBackend)
+
+
+def test_factory_http_and_offline():
+    assert isinstance(
+        create_auth_backend(AccountSettings(provider=AccountProvider.HTTP, server_url="https://x")),
+        HttpAuthBackend,
+    )
+    assert isinstance(create_auth_backend(AccountSettings()), OfflineAuthBackend)

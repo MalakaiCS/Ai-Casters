@@ -254,15 +254,30 @@ class CommentarySettings(_Section):
     )
 
 
+class AccountProvider(StrEnum):
+    """Which authentication backend the account client uses."""
+
+    OFFLINE = "offline"  # deterministic local auth, no server (default)
+    SUPABASE = "supabase"  # Supabase Auth (GoTrue)
+    HTTP = "http"  # a generic custom JSON/HTTP account service
+
+
 class AccountSettings(_Section):
     """Authentication client settings (Module 3, M8).
 
-    Blank ``server_url`` selects the offline backend, which authenticates locally
-    so the account surface works with no server. ``remember`` persists the session
-    across restarts; ``auto_login`` restores it on startup.
+    ``provider`` selects the backend. ``offline`` (default) authenticates locally
+    so the account surface works with no server. ``supabase`` uses Supabase Auth —
+    set ``supabase_url`` and ``supabase_anon_key`` (the anon key is public and safe
+    to ship; never embed the service-role key). ``http`` uses ``server_url`` for a
+    custom service. ``remember`` persists the session; ``auto_login`` restores it.
     """
 
-    server_url: str = Field(default="", description="Account API base URL (blank = offline).")
+    provider: AccountProvider = AccountProvider.OFFLINE
+    supabase_url: str = Field(
+        default="", description="Supabase project URL (https://xxx.supabase.co)."
+    )
+    supabase_anon_key: str = Field(default="", description="Supabase anon/public API key.")
+    server_url: str = Field(default="", description="Custom account API base URL (http provider).")
     remember: bool = Field(default=True, description="Persist the session across restarts.")
     auto_login: bool = Field(default=True, description="Restore a saved session on startup.")
 

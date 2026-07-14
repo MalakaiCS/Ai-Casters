@@ -12,7 +12,7 @@ import threading
 
 from ai_caster.auth.backend import AuthBackend
 from ai_caster.auth.events import AuthStateChanged
-from ai_caster.auth.models import Account, AuthSession
+from ai_caster.auth.models import Account, AuthResult, AuthSession
 from ai_caster.auth.store import SessionStore
 from ai_caster.core.events import EventBus
 from ai_caster.core.logging import get_logger
@@ -88,6 +88,22 @@ class AuthClient:
             return False
         self._set_session(result.session, detail="signed in")
         return True
+
+    def signup(self, email: str, password: str) -> AuthResult:
+        """Register a new account.
+
+        Returns the backend :class:`AuthResult` so callers can distinguish three
+        outcomes: signed in immediately (``session`` present), account created but
+        **email confirmation required** (``ok`` with no ``session``), or failure
+        (``ok`` false with ``error``). Announces sign-in only when a session is
+        actually established.
+        """
+        result = self._backend.signup(email, password, device_id=self._device_id)
+        if result.ok and result.session is not None:
+            self._set_session(result.session, detail="account created")
+        elif not result.ok:
+            self._bus.publish(AuthStateChanged(authenticated=False, detail=result.error))
+        return result
 
     def refresh(self) -> bool:
         """Refresh the current session's tokens. Returns True on success."""
