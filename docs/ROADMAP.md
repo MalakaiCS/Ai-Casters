@@ -1,0 +1,108 @@
+# AI Esports Caster — Development Roadmap
+
+This document breaks the project into sequential milestones. Each milestone
+must **compile, run and be fully testable** before the next one begins.
+Approval is requested before starting each new milestone.
+
+The architecture target is a **modular, production-ready commercial desktop
+application** (not a prototype). Modules communicate through clean interfaces
+and an internal event bus. **No module depends directly on UI code.**
+
+---
+
+## Module Inventory (from the master specification)
+
+| # | Module | Milestone |
+|---|--------|-----------|
+| 1 | Desktop UI | M1 (shell), M9 (full) |
+| 2 | Settings Manager | M1 |
+| 3 | Authentication Client | M8 |
+| 4 | Licensing Client | M8 |
+| 5 | GSI Receiver | M1 |
+| 6 | Video Capture | M3 |
+| 7 | Computer Vision | M4 |
+| 8 | Match State Engine | M2 |
+| 9 | Event Detection | M2 / M4 |
+| 10 | Commentary Director | M5 |
+| 11 | Play-by-Play AI | M6 |
+| 12 | Analyst AI | M6 |
+| 13 | Voice Engine | M7 |
+| 14 | Audio Routing | M7 |
+| 15 | Replay Integration | M5 |
+| 16 | OBS Integration | M7 |
+| 17 | Statistics Engine | M2 |
+| 18 | Training Pipeline (offline) | M10 |
+| 19 | Auto Updater | M8 |
+| 20 | Logging & Diagnostics | M1 |
+
+---
+
+## Milestones
+
+### ✅ Milestone 1 — Foundation, Shell, Configuration, GSI Receiver *(this milestone)*
+**Goal:** a running desktop application skeleton that can receive and display
+live CS2 Game State Integration data, with a validated configuration system and
+production-grade logging.
+
+Deliverables:
+- Project scaffolding (src layout, packaging, tooling, CI-ready test suite).
+- **Logging & Diagnostics** (Module 20): timestamped, structured, rotating logs.
+- Internal **event bus** for decoupled module communication.
+- **Settings Manager** (Module 2): typed, validated, persisted configuration
+  covering every configuration area in the spec.
+- **Desktop UI shell** (Module 1, partial): PySide6 main window with navigation
+  and placeholder views for every future module, plus a live GSI monitor view
+  and a settings editor view.
+- **GSI Receiver** (Module 5): FastAPI HTTP endpoint that ingests CS2 GSI
+  payloads, validates the auth token, parses them into typed models, stores the
+  latest live snapshot, and publishes updates on the event bus.
+- CS2 GSI **config-file generator** (the `.cfg` you drop into the game).
+- Unit tests for config, GSI parsing, the GSI endpoint and the event bus.
+
+### Milestone 2 — Match State Engine, Statistics, Event Detection (GSI-based)
+Single source of truth combining GSI + history; round/economy/momentum tracking;
+GSI-derived event detection (kills, plants, defuses, clutch situations);
+statistics accumulation; SQLite persistence.
+
+### Milestone 3 — Video Capture
+Observer-feed capture (window/monitor/capture-card), frame pipeline, timing,
+GPU-aware buffering.
+
+### Milestone 4 — Computer Vision
+Kill feed, HUD, bomb timer, scoreboard, utility (smoke/flash/molotov), camera
+transitions, replay/player/crowd-camera detection — all with confidence scores.
+Vision-based event detection fused into the Match Engine (server > GSI > vision).
+
+### Milestone 5 — Commentary Director + Replay Integration
+Broadcast-flow controller (who speaks, when, interruptions, handoffs, silence,
+replay transitions, excitement). Replay event ingestion and "never call replay
+live" enforcement.
+
+### Milestone 6 — Play-by-Play AI + Analyst AI
+Two independent commentary generators with pluggable AI providers. Original
+wording, no fact invention, no imitation of identifiable real casters.
+
+### Milestone 7 — Voice Engine, Audio Routing, OBS Integration
+Two fully independent voice channels (queue/interruption/volume/mute/DSP each),
+combined monitor mix, Windows device routing, OBS WebSocket integration.
+
+### Milestone 8 — Accounts, Licensing, Auto Updater
+Auth client, license validation, subscription tiers, device management, offline
+license cache, cloud settings sync, automatic updates. (No payment processing.)
+
+### Milestone 9 — Full Desktop UI & UX polish
+Complete every view, hotkeys, diagnostics dashboards, long-session stability.
+
+### Milestone 10 — Offline Training Pipeline
+Offline analysis of **authorized** recordings for general timing/pacing/vocab
+learning. No voice cloning or imitation of identifiable individuals. Not part of
+the live casting engine.
+
+---
+
+## Cross-cutting principles
+- Clean architecture, dependency injection at the composition root (`app.py`).
+- Every module independently testable; no UI coupling in domain modules.
+- Priority of truth: **Server events > GSI > Vision > Inference.**
+- Everything timestamped and logged.
+- Performance target: 1080p60, real-time, stable long-duration broadcasts.
