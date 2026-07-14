@@ -1,0 +1,56 @@
+name: Release
+
+# On a version tag (e.g. v0.1.0): build AICasters-Setup.exe on Windows and
+# publish a GitHub Release with the installer attached for download.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install app + build tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[ui,capture,vision,ai,voice,obs,hotkeys,diagnostics]" pyinstaller
+
+      - name: Freeze app (PyInstaller)
+        run: pyinstaller packaging/ai_caster.spec --noconfirm
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (python -c "import ai_caster; print(ai_caster.__version__)").Trim()
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            /DAppVersion=${{ steps.ver.outputs.version }} packaging\installer.iss
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${env:GITHUB_REF_NAME}" `
+            "dist/installer/AICasters-Setup.exe" `
+            --title "AI Casters ${{ steps.ver.outputs.version }}" `
+            --notes "Autonomous AI commentary for Counter-Strike 2. Download **AICasters-Setup.exe** below and run it to install. See docs/SETUP.md for configuration."

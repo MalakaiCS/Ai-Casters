@@ -82,7 +82,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 ai_caster = ["py.typed"]
-"ai_caster.ui.assets" = ["*.png"]
+"ai_caster.ui.assets" = ["*.png", "*.ico"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

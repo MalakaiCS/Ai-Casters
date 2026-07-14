@@ -39,3 +39,6 @@ logs/
 *.sqlite
 *.sqlite3
 /local/
+
+# Windows packaging build venv
+.buildenv/

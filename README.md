@@ -17,6 +17,15 @@ human caster required.
 > [`docs/ROADMAP.md`](docs/ROADMAP.md) for the milestone plan, and
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design.
 
+## Download (Windows)
+
+Grab the latest **`AICasters-Setup.exe`** from the
+[Releases](../../releases) page and run it. Between releases, the
+[**Build Windows installer**](../../actions/workflows/build-installer.yml) action
+attaches a ready-to-download installer to every run (see its *Artifacts*).
+Building the installer yourself is documented in
+[`packaging/README.md`](packaging/README.md).
+
 ## Status — Milestones 1–10 (complete)
 
 **Milestone 1 — Foundation**
