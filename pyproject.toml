@@ -47,6 +47,18 @@ ai = [
     "openai>=1.30",
 ]
 
+# Voice output backends (Modules 13 & 14). Optional: the synthetic TTS and the
+# null sinks need nothing; these add real OS speech (pyttsx3) and device output
+# (sounddevice) for production casting.
+voice = [
+    "pyttsx3>=2.90",
+    "sounddevice>=0.4",
+]
+
+# OBS integration (Module 16). Optional: the null controller needs nothing; this
+# adds the OBS WebSocket client for real scene switching.
+obs = ["obsws-python>=1.6"]
+
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",

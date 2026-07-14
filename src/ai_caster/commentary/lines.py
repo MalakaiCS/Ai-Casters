@@ -22,6 +22,7 @@ class CommentaryLine:
     excitement: float
     provider: str
     directive_kind: str
+    interrupt: bool = False
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 

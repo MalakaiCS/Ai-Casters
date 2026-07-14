@@ -36,6 +36,7 @@ from ai_caster.ui.views.replay_view import ReplayView
 from ai_caster.ui.views.settings_view import SettingsView
 from ai_caster.ui.views.statistics_view import StatisticsView
 from ai_caster.ui.views.vision_view import VisionView
+from ai_caster.ui.views.voice_view import VoiceView
 
 _log = get_logger("ui.main")
 
@@ -73,6 +74,7 @@ class MainWindow(QMainWindow):
         self._vision_view = VisionView(application.vision)
         self._director_view = DirectorView(application.director)
         self._commentary_view = CommentaryView(application.play_by_play, application.analyst)
+        self._voice_view = VoiceView(application.voice, application.obs)
         self._replay_view = ReplayView(
             application.replay_receiver, application.replay_server.address
         )
@@ -87,6 +89,7 @@ class MainWindow(QMainWindow):
         self._add_view("Computer Vision", self._vision_view)
         self._add_view("Commentary Director", self._director_view)
         self._add_view("Commentary AIs", self._commentary_view)
+        self._add_view("Voice, Audio & OBS", self._voice_view)
         self._add_view("Replay", self._replay_view)
         self._add_view("Settings", self._settings_view)
 
@@ -111,6 +114,8 @@ class MainWindow(QMainWindow):
         self._bridge.replay_state.connect(self._director_view.on_replay_state)
         self._bridge.replay_state.connect(self._replay_view.on_replay_state)
         self._bridge.commentary_line.connect(self._commentary_view.on_commentary_line)
+        self._bridge.commentary_line.connect(self._voice_view.on_commentary_line)
+        self._bridge.replay_state.connect(self._voice_view.on_replay_state)
 
         self.statusBar().showMessage(f"GSI endpoint: {application.gsi_server.address}")
 
@@ -120,8 +125,6 @@ class MainWindow(QMainWindow):
 
     def _add_placeholders(self) -> None:
         future = [
-            ("Voice Engine", "Milestone 7", "Two independent voice channels + monitor mix."),
-            ("Audio & OBS", "Milestone 7", "Windows device routing and OBS WebSocket."),
             ("Account & License", "Milestone 8", "Login, licensing, devices, cloud settings."),
             ("Diagnostics", "Milestone 9", "Latency, performance and log inspection."),
         ]

@@ -148,7 +148,7 @@ Deliverables:
 - Unit tests for replay (models/receiver/HTTP), the pure policy, and the
   Director's routing/interruption/handoff/silence/replay behaviour.
 
-### ✅ Milestone 6 — Play-by-Play AI + Analyst AI *(current)*
+### ✅ Milestone 6 — Play-by-Play AI + Analyst AI
 **Goal:** two independent commentary generators that turn the Director's
 directives into spoken words — original wording, no fact invention, no imitation
 of identifiable real casters.
@@ -169,9 +169,41 @@ Deliverables:
 - Unit tests for the mock, prompts, factory fallback, and generator routing/
   fallback/worker behaviour.
 
-### Milestone 7 — Voice Engine, Audio Routing, OBS Integration
-Two fully independent voice channels (queue/interruption/volume/mute/DSP each),
-combined monitor mix, Windows device routing, OBS WebSocket integration.
+### ✅ Milestone 7 — Voice Engine, Audio Routing, OBS Integration *(current)*
+**Goal:** speak the generated commentary through two fully independent voices,
+route each voice to its own audio output, and drive OBS scene changes from the
+authoritative replay state.
+
+Deliverables:
+- **Audio + DSP core** (pure NumPy, fully unit-tested, no hardware): an immutable
+  `AudioClip` plus per-channel dynamics — gain, static compressor, three-band EQ
+  and a hard limiter — chained in a `ChannelDSP`, and a `mix` primitive for the
+  monitor feed.
+- **Pluggable TTS** behind one interface: a deterministic offline **synthetic**
+  engine (default — exercises the whole voice path with real samples and zero
+  dependencies) and an optional **system** engine (pyttsx3) behind the `[voice]`
+  extra; a missing SDK degrades to synthetic.
+- **Two completely independent voice channels** (Module 13): each owns its queue,
+  worker thread, TTS, DSP chain, per-channel volume/mute, broadcast **latency**
+  and **interruption** (a higher-priority line pre-empts the in-flight one), so
+  synthesis and playback never block the bus.
+- **Audio routing** (Module 14): a per-channel `AudioSink` (offline `NullSink`
+  default; optional `SoundDeviceSink` behind `[voice]`) lets each voice target a
+  different device, plus a combined **monitor mix** for the caster's headphones.
+- **Voice Engine**: subscribes to generated lines and routes each to its speaker's
+  channel (honouring interruption); TTS and sinks are injectable so the whole
+  engine runs and is tested headlessly.
+- **OBS Integration** (Module 16): an `OBSController` interface with an offline
+  `NullOBSController` default and a `WebSocketOBSController` (obsws-python, `[obs]`
+  extra); an integration layer switches to the replay scene while a replay is
+  active and back to live when it ends, driven by authoritative `ReplayStateChanged`.
+- **Config + UI**: per-channel voice/DSP settings, OBS scene settings, and a
+  Voice/Audio & OBS view (per-channel enable/mute/volume + live counters, OBS
+  status) replacing the M7 placeholders.
+- Unit tests for the DSP/mix, channel queue/interruption/latency/monitor, engine
+  routing, and OBS null-controller + replay-driven scene switching, plus a
+  headless full-stack check (commentary lines → both voices + monitor; replay →
+  OBS scene flip).
 
 ### Milestone 8 — Accounts, Licensing, Auto Updater
 Auth client, license validation, subscription tiers, device management, offline

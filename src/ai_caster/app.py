@@ -12,6 +12,7 @@ driven headlessly (tests, a future server/CLI mode).
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 
 from ai_caster.capture.factory import create_frame_source
@@ -30,12 +31,15 @@ from ai_caster.gsi.receiver import GSIReceiver
 from ai_caster.gsi.server import GSIServer
 from ai_caster.match.engine import MatchStateEngine
 from ai_caster.match.state import MatchStateStore
+from ai_caster.obs.controller import NullOBSController, WebSocketOBSController
+from ai_caster.obs.integration import OBSIntegration
 from ai_caster.persistence.database import Database
 from ai_caster.persistence.repository import MatchRepository
 from ai_caster.replay.receiver import ReplayReceiver
 from ai_caster.replay.server import ReplayServer
 from ai_caster.statistics.engine import StatisticsEngine
 from ai_caster.vision.factory import create_vision_pipeline
+from ai_caster.voice.engine import VoiceEngine
 
 
 class Application:
@@ -147,6 +151,29 @@ class Application:
             max_tokens=settings.ai.max_tokens,
         )
 
+        # --- voice engine + audio routing (Modules 13 & 14) --------------- #
+        # Subscribes to generated lines; offline synthetic TTS + null sinks by
+        # default (real devices used only when configured and available).
+        self.voice = VoiceEngine(self.event_bus, settings.voice)
+
+        # --- OBS integration (Module 16) ---------------------------------- #
+        obs_available = importlib.util.find_spec("obsws_python") is not None
+        if settings.audio_obs.enabled and obs_available:
+            controller = WebSocketOBSController(
+                host=settings.audio_obs.host,
+                port=settings.audio_obs.port,
+                password=settings.audio_obs.password,
+            )
+        else:
+            controller = NullOBSController()
+        self.obs = OBSIntegration(
+            self.event_bus,
+            controller,
+            auto_switch_scenes=settings.audio_obs.auto_switch_scenes,
+            live_scene=settings.audio_obs.live_scene,
+            replay_scene=settings.audio_obs.replay_scene,
+        )
+
         # Re-apply GSI auth whenever settings change so edits take effect live.
         self.settings_manager.add_observer(self._on_settings_changed)
 
@@ -165,6 +192,9 @@ class Application:
             self.replay_server.start()
         self.play_by_play.start()
         self.analyst.start()
+        self.voice.start()
+        if self.settings.audio_obs.enabled:
+            self.obs.connect()
         self._log.info("Core services started")
 
     def stop_services(self) -> None:
@@ -175,6 +205,8 @@ class Application:
         self.vision.detach()
         if self.capture.is_running:
             self.capture.stop()
+        self.voice.dispose()
+        self.obs.dispose()
         self.play_by_play.dispose()
         self.analyst.dispose()
         self.director.dispose()

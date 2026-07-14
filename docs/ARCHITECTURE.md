@@ -201,6 +201,45 @@ params and `thinking` as Opus 4.8 requires. Robustness is layered: a missing SDK
 degrades to Mock at startup, and a provider exception falls back to Mock
 mid-line, so an unattended broadcast keeps talking.
 
+## Milestone 7 additions
+
+### Voice engine + audio routing (`voice/`)
+The voice subsystem turns each generated `CommentaryLine` into audio. All DSP is
+**pure NumPy on a mono float32 buffer** (`voice/audio.py`) — gain, a static
+compressor, a three-band EQ (bands partition the signal, so unity gain is exact
+identity) and a hard limiter, composed in a per-channel `ChannelDSP` — so the
+entire signal path is unit-tested with hand-built arrays and no audio hardware.
+TTS sits behind a `TTSEngine` interface: the default **synthetic** engine emits a
+short deterministic tone per line (real samples, zero dependencies — it exercises
+the queue, DSP, interruption, routing and monitor mix on any machine), and an
+optional **system** engine (pyttsx3, `[voice]` extra) renders OS speech.
+
+Each `VoiceChannel` is *completely independent*, per the spec's "two completely
+independent voices": its own bounded queue, worker thread, TTS, DSP chain,
+volume/mute, broadcast **latency** and **interruption**. Synthesis and playback
+run on the worker thread so they never block the bus; a higher-priority line calls
+`speak(..., interrupt=True)`, which drains the queue and signals a
+`threading.Event` the worker checks between synth, latency wait and device write,
+so an in-flight line is abandoned before it reaches the speakers. Output goes
+through an `AudioSink` (offline `NullSink` default that records what it received;
+optional `SoundDeviceSink` behind `[voice]`), which is what lets each voice target
+a **different device** and the whole engine be tested headlessly. A `MonitorMixer`
+receives both channels' processed audio at the monitor volume for the caster's
+headphones. The `VoiceEngine` owns the two channels + monitor, subscribes to
+`CommentaryLineGenerated`, and routes each line to its speaker's channel; TTS and
+the sink factory are injectable, which is how the routing is asserted in tests.
+
+### OBS integration (`obs/`)
+Scene control sits behind an `OBSController` interface with an offline
+`NullOBSController` (records the scenes it was asked to set — the default and the
+test double) and a `WebSocketOBSController` that drives real OBS via obsws-python
+(`[obs]` extra, lazy-imported). `OBSIntegration` subscribes to the authoritative
+`ReplayStateChanged` and, when auto-switching is enabled and OBS is connected,
+switches to the replay scene while a replay is active and back to the live scene
+when it ends — reusing the same replay signal the Director uses to enforce "never
+live during replay", so the picture and the words stay consistent. OBS errors are
+swallowed and logged rather than allowed to disrupt the broadcast.
+
 ## Package layout
 
 ```
@@ -266,6 +305,17 @@ src/ai_caster/
 │   ├── generator.py   # per-role generator (worker thread)
 │   ├── factory.py     # build a provider from AISettings
 │   └── providers/     # mock (default), anthropic, openai/local
+├── voice/
+│   ├── audio.py       # Modules 13/14: AudioClip + pure-NumPy DSP + mix
+│   ├── channel.py     # independent voice pipeline (queue/worker/interrupt)
+│   ├── engine.py      # VoiceEngine: routes lines to channels + monitor
+│   ├── monitor.py     # combined monitor mix
+│   ├── sink.py        # AudioSink: NullSink / SoundDeviceSink ([voice])
+│   ├── factory.py     # build TTS + output sinks from VoiceSettings
+│   └── tts/           # synthetic (default), system (pyttsx3, [voice])
+├── obs/
+│   ├── controller.py  # Module 16: OBSController (Null / WebSocket [obs])
+│   └── integration.py # replay-driven scene switching
 └── ui/
     ├── main_window.py # Module 1: PySide6 shell + navigation
     ├── qt_event_bridge.py
@@ -278,13 +328,20 @@ src/ai_caster/
 - **Capture thread:** runs the FPS-paced capture loop; invokes frame callbacks
   and publishes coarse status/stats. Frames never touch the Qt thread directly —
   the preview is rendered from `latest_frame()` on the ~1 Hz stats tick.
+- **Voice channel threads:** each voice runs its own worker thread that
+  synthesises, processes and plays a line (and applies broadcast latency), so a
+  slow TTS or blocking device write never stalls the bus; interruption signals the
+  worker to abandon the in-flight line.
 - **Bridge:** `QtEventBridge` subscribes to the bus and re-emits a Qt signal so
   UI updates always happen on the Qt thread.
 
 ## Testing
 `pytest` drives everything. Domain modules (config, gsi, match, detection,
-statistics, persistence, capture, vision, director, replay, commentary) have no
-Qt dependency and run headless in CI.
+statistics, persistence, capture, vision, director, replay, commentary, voice,
+obs) have no Qt dependency and run headless in CI. The voice DSP is tested as
+pure functions; channels/engine are driven through real worker-thread lifecycles
+with the synthetic TTS and null sinks; OBS is tested with the null controller by
+publishing replay events and asserting the scene sequence.
 The FastAPI endpoint is tested with Starlette's `TestClient`; persistence is
 tested against a temp-file SQLite database; the Match Engine is tested end-to-end
 by publishing GSI payloads on the bus and asserting on the model, events, stats

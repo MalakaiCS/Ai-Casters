@@ -76,19 +76,30 @@ class GSISettings(_Section):
 
 
 class VoiceChannelSettings(_Section):
-    """Per-channel voice settings. Each voice is fully independent (M7)."""
+    """Per-channel voice settings. Each voice is fully independent (Module 13):
+    its own output device, volume, mute, latency, compressor, EQ and limiter."""
 
     enabled: bool = True
     output_device: str = Field(
         default="", description="Windows audio output device name (blank = system default)."
     )
+    voice_id: str = Field(default="", description="TTS voice id (blank = engine default).")
     volume: float = Field(default=1.0, ge=0.0, le=1.0)
     muted: bool = False
     latency_ms: int = Field(default=120, ge=0, le=2000)
 
+    # Per-channel dynamics/EQ (values are multipliers/normalised thresholds).
+    compressor_enabled: bool = True
+    compressor_threshold: float = Field(default=0.5, gt=0.0, le=1.0)
+    compressor_ratio: float = Field(default=3.0, ge=1.0, le=20.0)
+    eq_low: float = Field(default=1.0, ge=0.0, le=4.0)
+    eq_mid: float = Field(default=1.0, ge=0.0, le=4.0)
+    eq_high: float = Field(default=1.0, ge=0.0, le=4.0)
+    limiter_ceiling: float = Field(default=0.95, gt=0.0, le=1.0)
+
 
 class VoiceSettings(_Section):
-    """Two independent voice channels plus a combined monitor mix (M7)."""
+    """Two independent voice channels plus a combined monitor mix (Module 14)."""
 
     play_by_play: VoiceChannelSettings = Field(default_factory=VoiceChannelSettings)
     analyst: VoiceChannelSettings = Field(default_factory=VoiceChannelSettings)
@@ -96,15 +107,24 @@ class VoiceSettings(_Section):
         default="", description="Device for the combined monitor mix (e.g. headphones)."
     )
     monitor_volume: float = Field(default=0.8, ge=0.0, le=1.0)
+    sample_rate: int = Field(default=24000, ge=8000, le=48000)
+    tts_engine: str = Field(
+        default="synthetic", description="TTS engine: 'synthetic' (offline) or 'system'."
+    )
 
 
 class OBSSettings(_Section):
-    """OBS WebSocket integration (M7)."""
+    """OBS WebSocket integration (Module 16)."""
 
     enabled: bool = False
     host: str = "127.0.0.1"
     port: int = Field(default=4455, ge=1, le=65535)
     password: str = ""
+    auto_switch_scenes: bool = Field(
+        default=False, description="Switch OBS scenes automatically on replay start/end."
+    )
+    live_scene: str = Field(default="Live", description="OBS scene name for live play.")
+    replay_scene: str = Field(default="Replay", description="OBS scene name during replays.")
 
 
 class ReplaySettings(_Section):

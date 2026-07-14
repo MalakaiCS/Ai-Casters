@@ -166,4 +166,5 @@ class CommentaryGenerator:
             excitement=directive.excitement,
             provider=provider_name,
             directive_kind=directive.kind.value,
+            interrupt=directive.interrupt,
         )

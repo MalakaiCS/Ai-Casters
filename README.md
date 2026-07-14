@@ -10,7 +10,7 @@ human caster required.
 > [`docs/ROADMAP.md`](docs/ROADMAP.md) for the milestone plan and
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design.
 
-## Status — Milestones 1 & 2
+## Status — Milestones 1–7
 
 **Milestone 1 — Foundation**
 
@@ -86,6 +86,23 @@ human caster required.
   a missing SDK or provider error degrades to Mock so the broadcast keeps talking.
 - **Commentary view** — live play-by-play and analyst transcripts with per-channel
   toggles.
+
+**Milestone 7 — Voice Engine, Audio Routing, OBS Integration**
+
+- **Two completely independent voices** — each with its own queue, TTS, dynamics
+  chain (compressor, three-band EQ, limiter), volume, mute, broadcast latency and
+  interruption (a higher-priority line pre-empts the current one), plus a combined
+  monitor mix for the caster's headphones.
+- **Audio routing** — each voice targets its own output device; all DSP is pure
+  NumPy and runs headless. The default synthetic TTS and offline sinks need
+  nothing; real OS speech (pyttsx3) and device output (sounddevice) install with
+  `pip install -e ".[voice]"`.
+- **OBS Integration** — automatically switches to a replay scene while a replay is
+  active and back to live when it ends, driven by authoritative replay state.
+  Real OBS control installs with `pip install -e ".[obs]"`; the offline default
+  needs nothing.
+- **Voice, Audio & OBS view** — per-channel enable/mute/volume with live
+  queue/spoken counters and OBS connection/scene status.
 
 ## Quick start
 
