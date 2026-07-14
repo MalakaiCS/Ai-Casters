@@ -59,7 +59,7 @@ Deliverables:
 - CS2 GSI **config-file generator** (the `.cfg` you drop into the game).
 - Unit tests for config, GSI parsing, the GSI endpoint and the event bus.
 
-### ✅ Milestone 2 — Match State Engine, Statistics, Event Detection (GSI-based) *(current)*
+### ✅ Milestone 2 — Match State Engine, Statistics, Event Detection (GSI-based)
 **Goal:** turn the latest-snapshot store into the full single source of truth.
 
 Deliverables:
@@ -78,9 +78,27 @@ Deliverables:
 - Unit + integration tests for the model, detector, statistics, persistence and
   the end-to-end engine.
 
-### Milestone 3 — Video Capture
-Observer-feed capture (window/monitor/capture-card), frame pipeline, timing,
-GPU-aware buffering.
+### ✅ Milestone 3 — Video Capture *(current)*
+**Goal:** capture the CS2 observer feed into a timed, GPU-aware frame pipeline —
+the input the M4 computer-vision system consumes.
+
+Deliverables:
+- **Frame model + sources**: an immutable `Frame` (BGR NumPy array + timing) and
+  a `FrameSource` abstraction. A **synthetic** source is the default so the whole
+  app runs on any machine (incl. headless CI); real backends capture a
+  **monitor** (mss), a **window** by title (mss + pygetwindow) or a
+  **capture card** (OpenCV), each lazy-importing its native dependency.
+- **Capture pipeline**: a threaded, FPS-paced loop with a ring **buffer** for
+  frame look-back, per-frame callbacks for high-rate consumers, and low-rate
+  status/stats on the bus. Never blocks the UI thread.
+- **Timing & stats**: target-vs-actual FPS, dropped frames, average capture
+  latency and uptime, with the pacing math split out for deterministic testing.
+- **GPU-aware seam**: an injectable `FrameUploader` (CPU no-op default) plus a
+  real GPU probe, so M4 can plug in CUDA upload without touching the pipeline.
+- **Config + UI**: a `CaptureSettings` section and a Video Capture view with
+  start/stop, live stats and a low-rate frame preview.
+- Unit + threaded tests for the frame, source, buffer, timing, pipeline and
+  factory (incl. clean errors when native deps are absent).
 
 ### Milestone 4 — Computer Vision
 Kill feed, HUD, bomb timer, scoreboard, utility (smoke/flash/molotov), camera

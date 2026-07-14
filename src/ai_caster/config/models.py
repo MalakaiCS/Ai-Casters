@@ -46,6 +46,15 @@ class Language(StrEnum):
     FRENCH = "fr"
 
 
+class CaptureSourceType(StrEnum):
+    """Where the observer feed pixels come from (Module 6)."""
+
+    SYNTHETIC = "synthetic"  # generated frames — always available, used for dev/CI
+    MONITOR = "monitor"  # a whole monitor / screen region (via mss)
+    WINDOW = "window"  # a specific window by title
+    CAPTURE_CARD = "capture_card"  # an external capture device (via OpenCV)
+
+
 # --------------------------------------------------------------------------- #
 # Sections
 # --------------------------------------------------------------------------- #
@@ -111,6 +120,38 @@ class ReplaySettings(_Section):
         default=False,
         description="Safety: if replay state is unknown, assume NOT live unless enabled.",
     )
+
+
+class CaptureSettings(_Section):
+    """Video capture settings (Module 6).
+
+    Defaults to a synthetic source so the application runs on any machine
+    (including headless CI). Switch ``source`` to monitor/window/capture_card and
+    set the matching locator to capture a real CS2 observer feed.
+    """
+
+    source: CaptureSourceType = CaptureSourceType.SYNTHETIC
+    target_fps: int = Field(default=60, ge=1, le=240, description="Capture loop target rate.")
+    width: int = Field(default=1920, ge=16, le=7680, description="Target/synthetic frame width.")
+    height: int = Field(default=1080, ge=16, le=4320, description="Target/synthetic frame height.")
+    buffer_size: int = Field(
+        default=8, ge=1, le=240, description="Ring-buffer depth for frame look-back."
+    )
+    use_gpu: bool = Field(
+        default=True, description="Upload frames to the GPU when an uploader is available."
+    )
+
+    # Source locators (only the one matching ``source`` is used).
+    monitor_index: int = Field(default=1, ge=0, description="mss monitor index (0 = virtual all).")
+    window_title: str = Field(
+        default="Counter-Strike", description="Substring of the window title."
+    )
+    device_index: int = Field(default=0, ge=0, description="OpenCV capture-card device index.")
+    # Optional sub-region (0 width/height = full source).
+    region_left: int = Field(default=0, ge=0)
+    region_top: int = Field(default=0, ge=0)
+    region_width: int = Field(default=0, ge=0)
+    region_height: int = Field(default=0, ge=0)
 
 
 class VisionSettings(_Section):
@@ -197,6 +238,7 @@ class AppSettings(_Section):
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     audio_obs: OBSSettings = Field(default_factory=OBSSettings)
     replay: ReplaySettings = Field(default_factory=ReplaySettings)
+    capture: CaptureSettings = Field(default_factory=CaptureSettings)
     vision: VisionSettings = Field(default_factory=VisionSettings)
     ai: AISettings = Field(default_factory=AISettings)
     commentary: CommentarySettings = Field(default_factory=CommentarySettings)

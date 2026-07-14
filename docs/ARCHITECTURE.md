@@ -96,6 +96,31 @@ implementation can replace it later without touching call sites. The connection
 is shared across threads and serialised with a lock; WAL mode keeps writes from
 blocking reads during long broadcasts.
 
+## Milestone 3 additions
+
+### Video capture (`capture/`)
+Capture is built around a `FrameSource` abstraction so the pipeline is identical
+regardless of where pixels originate. The **synthetic** source is the default,
+which is what lets the whole application (and CI) run with no display or capture
+hardware; real backends (monitor via mss, window via mss + pygetwindow, capture
+card via OpenCV) live in `capture/backends/` and **lazy-import** their native
+dependency inside `open()`, so importing the package is cheap and a missing
+capture library only fails — loudly and clearly — when you actually start that
+source.
+
+The `CapturePipeline` runs a **paced loop on its own thread**: grab → GPU-upload
+seam → ring buffer → per-frame callbacks → stats. Individual frames are handed to
+registered callbacks (the vision system in M4) rather than published on the bus —
+at 60 fps the bus would be the wrong tool — while only coarse status and ~1 Hz
+stats go on the bus for the UI. The pacing math (`FrameClock`) is separated from
+the sleeping so it is unit-tested deterministically, and `capture_once()` runs a
+single iteration so the whole pipeline can be driven without real timing.
+
+"GPU acceleration where available" is an honest, injectable seam: every frame
+passes through a `FrameUploader` (a CPU no-op today) and startup probes for a
+real accelerator so diagnostics report the truth. M4 plugs a CUDA uploader in
+here without the pipeline changing.
+
 ## Package layout
 
 ```
@@ -129,22 +154,36 @@ src/ai_caster/
 ├── persistence/
 │   ├── database.py    # SQLite connection + schema (migration-ready)
 │   └── repository.py  # MatchRepository (all SQL in one place)
+├── capture/
+│   ├── frame.py       # Module 6: immutable Frame (BGR array + timing)
+│   ├── source.py      # FrameSource ABC + SyntheticFrameSource
+│   ├── pipeline.py    # threaded, FPS-paced capture loop
+│   ├── buffer.py      # thread-safe frame ring buffer
+│   ├── timing.py      # FrameClock / FpsMeter / CaptureStats
+│   ├── uploader.py    # GPU-aware upload seam + GPU probe
+│   ├── factory.py     # build a FrameSource from CaptureSettings
+│   └── backends/      # monitor (mss), window, capture card (OpenCV)
 └── ui/
     ├── main_window.py # Module 1: PySide6 shell + navigation
     ├── qt_event_bridge.py
-    └── views/         # dashboard, GSI, match engine, statistics, settings, …
+    └── views/         # dashboard, GSI, match, statistics, capture, settings, …
 ```
 
 ## Threading model
-- **Qt thread:** owns all widgets. Never touched by network code directly.
+- **Qt thread:** owns all widgets. Never touched by network/capture code directly.
 - **GSI server thread:** runs uvicorn; parses payloads; publishes events.
+- **Capture thread:** runs the FPS-paced capture loop; invokes frame callbacks
+  and publishes coarse status/stats. Frames never touch the Qt thread directly —
+  the preview is rendered from `latest_frame()` on the ~1 Hz stats tick.
 - **Bridge:** `QtEventBridge` subscribes to the bus and re-emits a Qt signal so
   UI updates always happen on the Qt thread.
 
 ## Testing
 `pytest` drives everything. Domain modules (config, gsi, match, detection,
-statistics, persistence) have no Qt or network dependency and run headless in
-CI. The FastAPI endpoint is tested with Starlette's `TestClient`; persistence is
+statistics, persistence, capture) have no Qt dependency and run headless in CI.
+The FastAPI endpoint is tested with Starlette's `TestClient`; persistence is
 tested against a temp-file SQLite database; the Match Engine is tested end-to-end
 by publishing GSI payloads on the bus and asserting on the model, events, stats
-and stored rows.
+and stored rows. The capture pipeline is driven both deterministically (via
+`capture_once`) and through a short real-thread lifecycle, using the synthetic
+source; backends are tested for clean errors when their native deps are absent.

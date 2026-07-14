@@ -41,6 +41,17 @@ human caster required.
   migration-ready schema.
 - Live **Match Engine** and **Statistics** views with a real-time event feed.
 
+**Milestone 3 — Video Capture**
+
+- **Capture pipeline** — a threaded, FPS-paced loop feeding an immutable `Frame`
+  (BGR NumPy array + timing) through a GPU-aware upload seam into a ring buffer,
+  with per-frame callbacks for the vision stack and low-rate stats on the bus.
+- **Sources** — a synthetic generator (default; runs anywhere) plus monitor
+  (mss), window-by-title, and capture-card (OpenCV) backends that lazy-import
+  their native deps. Install with `pip install -e ".[capture]"`.
+- **Video Capture view** — start/stop, live FPS/dropped/latency stats and a
+  low-rate frame preview.
+
 ## Quick start
 
 ```bash

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal
 
+from ai_caster.capture.events import CaptureStatsUpdated, CaptureStatusChanged
 from ai_caster.core.events import (
     Event,
     GSIConnectionChanged,
@@ -29,6 +30,8 @@ class QtEventBridge(QObject):
     settings_changed = Signal(str)
     match_updated = Signal(object)  # -> LiveMatch
     match_event = Signal(object)  # -> MatchEvent
+    capture_status = Signal(bool, str, str)  # running, source, detail
+    capture_stats = Signal(object)  # -> CaptureStats
 
     def __init__(self, event_bus, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -39,6 +42,8 @@ class QtEventBridge(QObject):
             event_bus.subscribe(SettingsChanged, self._on_settings),
             event_bus.subscribe(MatchModelUpdated, self._on_match_updated),
             event_bus.subscribe(MatchEvent, self._on_match_event),
+            event_bus.subscribe(CaptureStatusChanged, self._on_capture_status),
+            event_bus.subscribe(CaptureStatsUpdated, self._on_capture_stats),
         ]
 
     # These run on the publisher's (network) thread; emitting a Qt signal with a
@@ -57,6 +62,12 @@ class QtEventBridge(QObject):
 
     def _on_match_event(self, event: MatchEvent) -> None:
         self.match_event.emit(event)
+
+    def _on_capture_status(self, event: CaptureStatusChanged) -> None:
+        self.capture_status.emit(event.running, event.source, event.detail)
+
+    def _on_capture_stats(self, event: CaptureStatsUpdated) -> None:
+        self.capture_stats.emit(event.stats)
 
     def dispose(self) -> None:
         """Unsubscribe from the bus (call on shutdown)."""

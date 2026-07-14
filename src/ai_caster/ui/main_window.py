@@ -25,6 +25,7 @@ from ai_caster import __app_name__, __version__
 from ai_caster.app import Application
 from ai_caster.core.logging import get_logger
 from ai_caster.ui.qt_event_bridge import QtEventBridge
+from ai_caster.ui.views.capture_view import CaptureView
 from ai_caster.ui.views.dashboard import DashboardView
 from ai_caster.ui.views.gsi_view import GSIView
 from ai_caster.ui.views.match_view import MatchView
@@ -64,13 +65,15 @@ class MainWindow(QMainWindow):
         self._gsi_view = GSIView(application.gsi_server.address)
         self._match_view = MatchView()
         self._statistics_view = StatisticsView(application.statistics)
+        self._capture_view = CaptureView(application.capture)
         self._settings_view = SettingsView(application.settings_manager)
 
-        # Live views (Milestones 1 & 2).
+        # Live views (Milestones 1–3).
         self._add_view("Dashboard", self._dashboard)
         self._add_view("Live GSI", self._gsi_view)
         self._add_view("Match Engine", self._match_view)
         self._add_view("Statistics", self._statistics_view)
+        self._add_view("Video Capture", self._capture_view)
         self._add_view("Settings", self._settings_view)
 
         # Placeholders for future modules (navigable from day one).
@@ -87,6 +90,8 @@ class MainWindow(QMainWindow):
         self._bridge.match_updated.connect(self._match_view.on_match_updated)
         self._bridge.match_updated.connect(lambda _m: self._statistics_view.refresh())
         self._bridge.match_event.connect(self._match_view.on_match_event)
+        self._bridge.capture_status.connect(self._capture_view.on_capture_status)
+        self._bridge.capture_stats.connect(self._capture_view.on_capture_stats)
 
         self.statusBar().showMessage(f"GSI endpoint: {application.gsi_server.address}")
 
@@ -96,7 +101,6 @@ class MainWindow(QMainWindow):
 
     def _add_placeholders(self) -> None:
         future = [
-            ("Video Capture", "Milestone 3", "Capture the CS2 observer feed at 1080p60."),
             ("Computer Vision", "Milestone 4", "Kill feed, HUD, utility and camera understanding."),
             ("Commentary Director", "Milestone 5", "Decides who speaks, when, and broadcast flow."),
             ("Replay", "Milestone 5", "External replay events; never call replays live."),

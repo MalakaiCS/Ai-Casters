@@ -4,4 +4,5 @@ pydantic>=2.6,<3
 fastapi>=0.110
 uvicorn[standard]>=0.29
 platformdirs>=4.2
+numpy>=1.26
 PySide6>=6.6

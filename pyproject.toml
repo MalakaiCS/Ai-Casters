@@ -19,12 +19,22 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
     "platformdirs>=4.2",
+    "numpy>=1.26",
 ]
 
 [project.optional-dependencies]
 # Desktop UI. Kept optional so headless CI can run the domain test suite
 # without a display server / Qt binaries.
 ui = ["PySide6>=6.6"]
+
+# Real video-capture backends (Module 6). Optional so the synthetic source and
+# the full domain test suite run without native capture libraries. Uses the
+# headless OpenCV build to avoid a libGL dependency.
+capture = [
+    "opencv-python-headless>=4.9",
+    "mss>=9.0",
+    "pygetwindow>=0.0.9",
+]
 
 dev = [
     "pytest>=8.0",

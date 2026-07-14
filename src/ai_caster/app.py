@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import logging
 
+from ai_caster.capture.factory import create_frame_source
+from ai_caster.capture.pipeline import CapturePipeline
+from ai_caster.capture.uploader import create_uploader
 from ai_caster.config.manager import SettingsManager
 from ai_caster.config.models import AppSettings
 from ai_caster.core.events import EventBus
@@ -82,6 +85,17 @@ class Application:
             persist=settings.statistics.persist,
         )
 
+        # --- video capture (Module 6) ------------------------------------- #
+        # Built but NOT auto-started: capture is a heavy subsystem the operator
+        # turns on (from the UI) once the observer feed is ready.
+        self.capture = CapturePipeline(
+            create_frame_source(settings.capture),
+            self.event_bus,
+            target_fps=settings.capture.target_fps,
+            buffer_size=settings.capture.buffer_size,
+            uploader=create_uploader(settings.capture.use_gpu),
+        )
+
         # Re-apply GSI auth whenever settings change so edits take effect live.
         self.settings_manager.add_observer(self._on_settings_changed)
 
@@ -100,6 +114,8 @@ class Application:
     def stop_services(self) -> None:
         """Stop all background services and release resources."""
         self.gsi_server.stop()
+        if self.capture.is_running:
+            self.capture.stop()
         self.match_engine.dispose()
         if self.database is not None:
             self.database.close()
