@@ -328,11 +328,28 @@ class LoggingSettings(_Section):
 
 
 class HotkeySettings(_Section):
-    """Global hotkeys (wired up with the full UI in M9)."""
+    """Global hotkeys (Module 1 completion, M9).
 
+    ``enabled`` gates OS-level global hotkey registration; when off (or when the
+    optional backend is unavailable) the same actions remain reachable from the UI.
+    """
+
+    enabled: bool = Field(default=True, description="Register OS-global hotkeys.")
     toggle_casting: str = "Ctrl+Alt+C"
     mute_all: str = "Ctrl+Alt+M"
     force_replay_mode: str = "Ctrl+Alt+R"
+
+
+class DiagnosticsSettings(_Section):
+    """Runtime diagnostics dashboard (Module 20 completion, M9)."""
+
+    enabled: bool = Field(default=True, description="Publish periodic diagnostics snapshots.")
+    poll_interval_seconds: float = Field(
+        default=2.0, ge=0.25, le=60.0, description="How often to sample runtime health."
+    )
+    log_tail_lines: int = Field(
+        default=200, ge=10, le=5000, description="Lines shown in the in-app log inspector."
+    )
 
 
 class AppSettings(_Section):
@@ -354,3 +371,4 @@ class AppSettings(_Section):
     statistics: StatisticsSettings = Field(default_factory=StatisticsSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     hotkeys: HotkeySettings = Field(default_factory=HotkeySettings)
+    diagnostics: DiagnosticsSettings = Field(default_factory=DiagnosticsSettings)

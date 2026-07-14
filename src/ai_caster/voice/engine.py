@@ -88,6 +88,11 @@ class VoiceEngine:
     def channel(self, speaker: str) -> VoiceChannel:
         return self.analyst if speaker == ANALYST else self.play_by_play
 
+    def set_muted(self, muted: bool) -> None:
+        """Mute or unmute both voices at once (the 'mute all' control)."""
+        self.play_by_play.set_muted(muted)
+        self.analyst.set_muted(muted)
+
     def _on_line(self, event: CommentaryLineGenerated) -> None:
         line = event.line
         if line is None or not line.text:

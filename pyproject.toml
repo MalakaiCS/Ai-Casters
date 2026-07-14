@@ -59,6 +59,14 @@ voice = [
 # adds the OBS WebSocket client for real scene switching.
 obs = ["obsws-python>=1.6"]
 
+# Global hotkeys (M9). Optional: the null backend needs nothing; this adds the
+# OS keyboard hook used to register true global hotkeys.
+hotkeys = ["pynput>=1.7"]
+
+# Diagnostics resource metrics (M9). Optional: CPU/memory degrade gracefully
+# without it; this adds accurate per-process CPU and memory sampling.
+diagnostics = ["psutil>=5.9"]
+
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",

@@ -51,3 +51,31 @@ def test_application_wires_account_services(isolated_home):
     # No manifest configured -> updater reports up to date; sync is a no-op.
     assert not app.updater.check().available
     assert not app.sync.push()  # free tier lacks the cloud-sync entitlement
+
+
+def test_application_broadcast_and_diagnostics(isolated_home):
+    app = Application()
+    # Broadcast control is wired to capture/vision and gated on the (free)
+    # live-casting entitlement, which the default tier includes.
+    assert app.broadcast.toggle_casting() is True
+    assert app.capture.is_running and app.vision.enabled
+    assert app.broadcast.toggle_casting() is False
+    assert not app.capture.is_running and not app.vision.enabled
+
+    # Master mute flows through to both voices.
+    assert app.broadcast.toggle_mute() is True
+    assert app.voice.play_by_play.dsp.muted and app.voice.analyst.dsp.muted
+    app.broadcast.toggle_mute()
+
+    # Hotkeys map to the broadcast actions (offline null backend by default).
+    from ai_caster.hotkeys.actions import HotkeyAction
+
+    app.hotkeys.trigger(HotkeyAction.TOGGLE_CASTING)
+    assert app.broadcast.is_casting
+    app.hotkeys.trigger(HotkeyAction.TOGGLE_CASTING)
+
+    # Diagnostics produces a coherent snapshot on demand.
+    snap = app.diagnostics.snapshot()
+    assert snap.uptime_seconds >= 0.0
+    app.broadcast.dispose()
+    app.diagnostics.dispose()

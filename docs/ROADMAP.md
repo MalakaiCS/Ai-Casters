@@ -205,7 +205,7 @@ Deliverables:
   headless full-stack check (commentary lines → both voices + monitor; replay →
   OBS scene flip).
 
-### ✅ Milestone 8 — Accounts, Licensing, Auto Updater *(current)*
+### ✅ Milestone 8 — Accounts, Licensing, Auto Updater
 **Goal:** sign the operator in, resolve what their subscription unlocks, keep
 their configuration in sync, and surface application updates — all fully usable
 offline, with no payment processing.
@@ -240,8 +240,40 @@ Deliverables:
   check and the composition-root wiring. All backends degrade gracefully and no
   payment processing is present.
 
-### Milestone 9 — Full Desktop UI & UX polish
-Complete every view, hotkeys, diagnostics dashboards, long-session stability.
+### ✅ Milestone 9 — Full Desktop UI & UX polish *(current)*
+**Goal:** finish the desktop surface — every module has a real, live view — and add
+the operator ergonomics that make long unattended broadcasts practical: one-switch
+broadcast control, global hotkeys, and a runtime diagnostics dashboard.
+
+Deliverables:
+- **Broadcast controller**: one "go live" switch that starts/stops the whole cast
+  (capture + vision) together, master-mutes both voices, and forces replay mode —
+  the single code path shared by the UI and the hotkeys. Casting is gated on the
+  `LIVE_CASTING` entitlement; forced replay reuses the authoritative
+  `ReplayStateChanged` machinery so the Director's "never live during replay"
+  enforcement applies unchanged.
+- **Global hotkeys** (Module 1 completion): configured combinations map to the
+  broadcast actions (toggle casting, mute all, force replay). The default backend
+  installs no OS hook — the actions stay reachable from the UI — while an optional
+  `pynput` backend registers true global hotkeys behind the `[hotkeys]` extra. A
+  hotkey callback can never crash the app.
+- **Diagnostics dashboard** (Module 20 completion): a background engine samples
+  runtime health (uptime, GSI/casting/replay state, capture FPS + drop rate,
+  vision throughput, voice queue depth, event throughput, CPU/memory) into an
+  immutable snapshot published on a timer, plus an in-app tail of the rotating log.
+  CPU/memory use `psutil` when present (`[diagnostics]` extra) and degrade honestly
+  to `None` rather than a fabricated figure.
+- **Full desktop UI**: the last placeholder is gone — every navigation entry is a
+  live view. The Dashboard gains broadcast controls and live state; a new
+  Diagnostics view renders the metrics and log.
+- **Long-session stability**: the diagnostics engine runs on a daemon thread with
+  an interruptible wait (immediate, clean shutdown), and the composition root
+  disposes diagnostics, hotkeys and the broadcast controller in order on stop.
+- Unit tests for the broadcast lifecycle/entitlement-gate/mute/forced-replay, the
+  hotkey binding/trigger/guard and pynput translation, and the diagnostics
+  collector/engine/log-tail — plus a headless full-stack check driving casting,
+  mute and forced replay through the hotkeys and asserting the diagnostics
+  snapshot. UI verified by byte-compile + slot wiring (Qt can't load headless).
 
 ### Milestone 10 — Offline Training Pipeline
 Offline analysis of **authorized** recordings for general timing/pacing/vocab

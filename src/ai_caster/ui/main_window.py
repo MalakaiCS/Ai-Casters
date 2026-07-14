@@ -1,9 +1,9 @@
 """The main application window and desktop entry point.
 
-Builds a sidebar-navigation shell (a list + a stacked widget) that hosts the
-live views implemented in Milestone 1 and placeholders for every future module,
-so the full product surface is visible from day one. Wires the core
-:class:`~ai_caster.app.Application` to the UI through the
+Builds a sidebar-navigation shell (a list + a stacked widget) that hosts a live
+view for every module — dashboard, GSI, match, statistics, capture, vision,
+director, commentary, voice/OBS, replay, account, diagnostics and settings. Wires
+the core :class:`~ai_caster.app.Application` to the UI through the
 :class:`~ai_caster.ui.qt_event_bridge.QtEventBridge`.
 """
 
@@ -29,10 +29,10 @@ from ai_caster.ui.views.account_view import AccountView
 from ai_caster.ui.views.capture_view import CaptureView
 from ai_caster.ui.views.commentary_view import CommentaryView
 from ai_caster.ui.views.dashboard import DashboardView
+from ai_caster.ui.views.diagnostics_view import DiagnosticsView
 from ai_caster.ui.views.director_view import DirectorView
 from ai_caster.ui.views.gsi_view import GSIView
 from ai_caster.ui.views.match_view import MatchView
-from ai_caster.ui.views.placeholder import PlaceholderView
 from ai_caster.ui.views.replay_view import ReplayView
 from ai_caster.ui.views.settings_view import SettingsView
 from ai_caster.ui.views.statistics_view import StatisticsView
@@ -67,7 +67,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._stack, stretch=1)
         self.setCentralWidget(central)
 
-        self._dashboard = DashboardView(application.gsi_server.address)
+        self._dashboard = DashboardView(application.gsi_server.address, application.broadcast)
         self._gsi_view = GSIView(application.gsi_server.address)
         self._match_view = MatchView()
         self._statistics_view = StatisticsView(application.statistics)
@@ -81,6 +81,10 @@ class MainWindow(QMainWindow):
         )
         self._account_view = AccountView(
             application.auth, application.licensing, application.updater
+        )
+        self._diagnostics_view = DiagnosticsView(
+            application.paths.log_dir if application.settings.logging.log_to_file else None,
+            log_tail_lines=application.settings.diagnostics.log_tail_lines,
         )
         self._settings_view = SettingsView(application.settings_manager)
 
@@ -96,10 +100,8 @@ class MainWindow(QMainWindow):
         self._add_view("Voice, Audio & OBS", self._voice_view)
         self._add_view("Replay", self._replay_view)
         self._add_view("Account & License", self._account_view)
+        self._add_view("Diagnostics", self._diagnostics_view)
         self._add_view("Settings", self._settings_view)
-
-        # Placeholders for future modules (navigable from day one).
-        self._add_placeholders()
 
         self._nav.currentRowChanged.connect(self._stack.setCurrentIndex)
         self._nav.setCurrentRow(0)
@@ -124,19 +126,14 @@ class MainWindow(QMainWindow):
         self._bridge.auth_state.connect(self._account_view.on_auth_state)
         self._bridge.license_state.connect(self._account_view.on_license_state)
         self._bridge.update_available.connect(self._account_view.on_update_available)
+        self._bridge.diagnostics.connect(self._diagnostics_view.on_diagnostics)
+        self._bridge.broadcast_state.connect(self._dashboard.on_broadcast_state)
 
         self.statusBar().showMessage(f"GSI endpoint: {application.gsi_server.address}")
 
     def _add_view(self, name: str, widget: QWidget) -> None:
         QListWidgetItem(name, self._nav)
         self._stack.addWidget(widget)
-
-    def _add_placeholders(self) -> None:
-        future = [
-            ("Diagnostics", "Milestone 9", "Latency, performance and log inspection."),
-        ]
-        for title, milestone, description in future:
-            self._add_view(title, PlaceholderView(title, milestone, description))
 
     def showEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().showEvent(event)

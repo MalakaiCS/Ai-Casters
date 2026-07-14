@@ -10,7 +10,7 @@ human caster required.
 > [`docs/ROADMAP.md`](docs/ROADMAP.md) for the milestone plan and
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design.
 
-## Status — Milestones 1–8
+## Status — Milestones 1–9
 
 **Milestone 1 — Foundation**
 
@@ -121,6 +121,20 @@ human caster required.
   before they are applied.
 - **Account, License & Updates view** — sign-in, current tier and entitlements,
   registered devices, and update status.
+
+**Milestone 9 — Full Desktop UI & UX polish**
+
+- **One-switch broadcast control** — go live (start capture + vision together),
+  master-mute both voices, or force replay mode from the Dashboard or via global
+  hotkeys. Casting is gated on the live-casting entitlement.
+- **Global hotkeys** — toggle casting, mute all, force replay. Works from the UI
+  out of the box; install `pip install -e ".[hotkeys]"` for true OS-global keys.
+- **Diagnostics dashboard** — live uptime, GSI/casting/replay state, capture FPS +
+  drop rate, vision throughput, voice queue depth, event throughput and CPU/memory
+  (accurate with `pip install -e ".[diagnostics]"`; honest `n/a` without it), plus
+  an in-app tail of the application log.
+- **Every view is live** — the last placeholder is gone; the full product surface
+  is real.
 
 ## Quick start
 

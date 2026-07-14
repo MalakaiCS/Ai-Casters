@@ -12,6 +12,7 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, Signal
 
 from ai_caster.auth.events import AuthStateChanged
+from ai_caster.broadcast.events import BroadcastStateChanged
 from ai_caster.capture.events import CaptureStatsUpdated, CaptureStatusChanged
 from ai_caster.commentary.lines import CommentaryLineGenerated
 from ai_caster.core.events import (
@@ -21,6 +22,7 @@ from ai_caster.core.events import (
     SettingsChanged,
 )
 from ai_caster.detection.events import MatchEvent
+from ai_caster.diagnostics.events import DiagnosticsUpdated
 from ai_caster.director.directives import CommentaryDirectiveIssued
 from ai_caster.licensing.events import LicenseStateChanged
 from ai_caster.match.events import MatchModelUpdated
@@ -46,6 +48,8 @@ class QtEventBridge(QObject):
     auth_state = Signal(bool, object, str)  # authenticated, account, detail
     license_state = Signal(str, str, bool)  # status, tier, offline
     update_available = Signal(object, str, str, bool)  # info, current, latest, mandatory
+    diagnostics = Signal(object)  # -> DiagnosticsSnapshot
+    broadcast_state = Signal(bool, bool, str)  # casting, muted, detail
 
     def __init__(self, event_bus, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -65,6 +69,8 @@ class QtEventBridge(QObject):
             event_bus.subscribe(AuthStateChanged, self._on_auth_state),
             event_bus.subscribe(LicenseStateChanged, self._on_license_state),
             event_bus.subscribe(UpdateAvailable, self._on_update_available),
+            event_bus.subscribe(DiagnosticsUpdated, self._on_diagnostics),
+            event_bus.subscribe(BroadcastStateChanged, self._on_broadcast_state),
         ]
 
     # These run on the publisher's (network) thread; emitting a Qt signal with a
@@ -112,6 +118,12 @@ class QtEventBridge(QObject):
         self.update_available.emit(
             event.update, event.current_version, event.latest_version, event.mandatory
         )
+
+    def _on_diagnostics(self, event: DiagnosticsUpdated) -> None:
+        self.diagnostics.emit(event.snapshot)
+
+    def _on_broadcast_state(self, event: BroadcastStateChanged) -> None:
+        self.broadcast_state.emit(event.casting, event.muted, event.detail)
 
     def dispose(self) -> None:
         """Unsubscribe from the bus (call on shutdown)."""

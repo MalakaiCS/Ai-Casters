@@ -289,6 +289,42 @@ The composition root constructs each client with its offline-or-HTTP backend
 and checks for updates — each wrapped so a failure degrades to offline/free rather
 than blocking the broadcast.
 
+## Milestone 9 additions
+
+### Broadcast control (`broadcast/`)
+The subsystems (capture, vision, voice) already start and stop independently, but
+an operator — and the global hotkeys — need *one* action that turns the whole cast
+on or off. `BroadcastController` is that seam: it owns no threads, composes the
+subsystems it is given, and announces `BroadcastStateChanged` on the bus, so the
+UI and the hotkey manager drive the exact same code path. `start_casting()` is
+gated on the `LIVE_CASTING` entitlement — licensing is enforced at the one place it
+matters rather than sprinkled through the pipeline. `set_forced_replay()`
+deliberately publishes an authoritative `ReplayStateChanged` rather than inventing
+a parallel override, so the Director's existing "never live during replay"
+enforcement applies unchanged; consequently the *effective* replay state lives on
+the Director (which sees both external replay events and forced replay), which is
+why diagnostics reads replay state from there.
+
+### Global hotkeys (`hotkeys/`)
+The manager maps configured key combinations (`HotkeySettings`) to `HotkeyAction`
+callbacks and drives a `HotkeyBackend`. Its `trigger()` invokes an action directly,
+so the wiring is verified — and the same actions are reachable from UI buttons —
+without any keyboard hook; every callback is wrapped so a hotkey press can never
+propagate an exception. The default `NullHotkeyBackend` records bindings but
+installs nothing; `PynputHotkeyBackend` (the `[hotkeys]` extra) registers true
+OS-global hotkeys, translating `"Ctrl+Alt+C"` to pynput's `"<ctrl>+<alt>+c"` form.
+
+### Diagnostics dashboard (`diagnostics/`)
+`DiagnosticsEngine` samples runtime health on a daemon-thread timer (interruptible
+wait for immediate shutdown) and publishes an immutable `DiagnosticsSnapshot`. The
+`DiagnosticsCollector` reads state through a bundle of small **accessor callables**
+(`DiagnosticsSources`) rather than importing the subsystems, so it stays decoupled
+and is tested with fakes. Resource sampling uses `psutil` when available and
+degrades to the stdlib (memory only) or to `None` — never a fabricated number. The
+engine also counts events crossing the bus (excluding its own publications) as a
+cheap throughput signal, and `tail_log` reads the rotating log for the in-app
+inspector.
+
 ## Package layout
 
 ```
@@ -384,6 +420,17 @@ src/ai_caster/
 ├── sync/
 │   ├── backend.py     # SyncBackend: Null (default) / HTTP
 │   └── client.py      # SettingsSyncClient (entitlement-gated push/pull)
+├── broadcast/
+│   └── controller.py  # M9: one-switch casting / mute / forced replay
+├── hotkeys/
+│   ├── actions.py     # HotkeyAction enum
+│   ├── backend.py     # HotkeyBackend: Null (default) / pynput ([hotkeys])
+│   └── manager.py     # HotkeyManager (binding + trigger + guard)
+├── diagnostics/
+│   ├── models.py      # DiagnosticsSnapshot
+│   ├── collector.py   # samples subsystems via accessor callables
+│   ├── logs.py        # rotating-log tail for the in-app inspector
+│   └── engine.py      # timer thread: publish DiagnosticsUpdated
 └── ui/
     ├── main_window.py # Module 1: PySide6 shell + navigation
     ├── qt_event_bridge.py
@@ -400,6 +447,9 @@ src/ai_caster/
   synthesises, processes and plays a line (and applies broadcast latency), so a
   slow TTS or blocking device write never stalls the bus; interruption signals the
   worker to abandon the in-flight line.
+- **Diagnostics thread:** a daemon timer thread samples runtime health and
+  publishes a snapshot on an interruptible wait, so shutdown is immediate and it
+  never keeps a long broadcast from exiting cleanly.
 - **Bridge:** `QtEventBridge` subscribes to the bus and re-emits a Qt signal so
   UI updates always happen on the Qt thread.
 
@@ -413,7 +463,12 @@ the null controller by publishing replay events and asserting the scene sequence
 The account subsystems are tested entirely through their offline backends —
 deterministic login, session persistence, license cache + grace window, tier
 entitlements, device management, version/checksum logic, and entitlement-gated
-sync push/pull-and-apply — so no test touches the network.
+sync push/pull-and-apply — so no test touches the network. The broadcast
+controller, hotkey manager and diagnostics engine are tested with fakes and the
+null backends (casting lifecycle + entitlement gate, hotkey binding/trigger/guard,
+diagnostics collector/engine/log-tail), and a headless full-stack check drives
+casting, mute and forced replay through the real hotkey manager on a live
+`Application`.
 The FastAPI endpoint is tested with Starlette's `TestClient`; persistence is
 tested against a temp-file SQLite database; the Match Engine is tested end-to-end
 by publishing GSI payloads on the bus and asserting on the model, events, stats

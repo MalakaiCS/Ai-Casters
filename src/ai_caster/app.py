@@ -19,6 +19,7 @@ from ai_caster import __version__
 from ai_caster.auth.backend import HttpAuthBackend, OfflineAuthBackend
 from ai_caster.auth.client import AuthClient
 from ai_caster.auth.store import SessionStore
+from ai_caster.broadcast.controller import BroadcastController
 from ai_caster.capture.factory import create_frame_source
 from ai_caster.capture.pipeline import CapturePipeline
 from ai_caster.capture.uploader import create_uploader
@@ -26,14 +27,19 @@ from ai_caster.commentary.factory import create_provider
 from ai_caster.commentary.generator import CommentaryGenerator
 from ai_caster.config.manager import SettingsManager
 from ai_caster.config.models import AppSettings
-from ai_caster.core.events import EventBus
+from ai_caster.core.events import EventBus, GSIConnectionChanged
 from ai_caster.core.identity import get_or_create_device_id
 from ai_caster.core.logging import configure_logging, get_logger
 from ai_caster.core.paths import AppPaths, get_app_paths
+from ai_caster.diagnostics.collector import DiagnosticsCollector, DiagnosticsSources
+from ai_caster.diagnostics.engine import DiagnosticsEngine
 from ai_caster.director.directives import Speaker
 from ai_caster.director.director import CommentaryDirector
 from ai_caster.gsi.receiver import GSIReceiver
 from ai_caster.gsi.server import GSIServer
+from ai_caster.hotkeys.actions import HotkeyAction
+from ai_caster.hotkeys.backend import NullHotkeyBackend, PynputHotkeyBackend
+from ai_caster.hotkeys.manager import HotkeyManager
 from ai_caster.licensing.backend import HttpLicensingBackend, OfflineLicensingBackend
 from ai_caster.licensing.cache import LicenseCache
 from ai_caster.licensing.client import LicensingClient
@@ -246,6 +252,57 @@ class Application:
             enabled=settings.sync.enabled,
         )
 
+        # --- broadcast control + hotkeys (Module 1 completion; M9) -------- #
+        # One switch for the whole cast, shared by the UI and the global hotkeys,
+        # and gated on the live-casting entitlement.
+        self.broadcast = BroadcastController(
+            self.event_bus,
+            capture=self.capture,
+            vision=self.vision,
+            voice=self.voice,
+            licensing=self.licensing,
+        )
+        hotkey_backend = (
+            PynputHotkeyBackend()
+            if settings.hotkeys.enabled and importlib.util.find_spec("pynput") is not None
+            else NullHotkeyBackend()
+        )
+        self.hotkeys = HotkeyManager(
+            settings.hotkeys,
+            {
+                HotkeyAction.TOGGLE_CASTING: self.broadcast.toggle_casting,
+                HotkeyAction.MUTE_ALL: self.broadcast.toggle_mute,
+                HotkeyAction.FORCE_REPLAY_MODE: self.broadcast.toggle_forced_replay,
+            },
+            backend=hotkey_backend,
+        )
+
+        # --- diagnostics dashboard (Module 20 completion; M9) ------------- #
+        # Reads live state through accessor callables so the collector stays
+        # decoupled from the subsystems it samples.
+        self._gsi_connected = False
+        self.event_bus.subscribe(GSIConnectionChanged, self._on_gsi_connection)
+        diagnostics_sources = DiagnosticsSources(
+            gsi_connected=lambda: self._gsi_connected,
+            capture_stats=lambda: self.capture.stats() if self.capture else None,
+            vision_enabled=lambda: self.vision.enabled,
+            vision_processed=lambda: self.vision.processed_count,
+            voice_pending=lambda: (
+                self.voice.play_by_play.pending(),
+                self.voice.analyst.pending(),
+            ),
+            # The Director reflects the *effective* replay state (external replay
+            # events and forced replay mode alike), so it's the honest source here.
+            replay_active=lambda: self.director.replay_active,
+            casting=lambda: self.broadcast.is_casting,
+            muted=lambda: self.broadcast.is_muted,
+        )
+        self.diagnostics = DiagnosticsEngine(
+            self.event_bus,
+            DiagnosticsCollector(sources=diagnostics_sources),
+            poll_interval=settings.diagnostics.poll_interval_seconds,
+        )
+
         # Re-apply GSI auth whenever settings change so edits take effect live.
         self.settings_manager.add_observer(self._on_settings_changed)
 
@@ -268,6 +325,10 @@ class Application:
         if self.settings.audio_obs.enabled:
             self.obs.connect()
         self._start_account_services()
+        if self.settings.hotkeys.enabled:
+            self.hotkeys.start()
+        if self.settings.diagnostics.enabled:
+            self.diagnostics.start()
         self._log.info("Core services started")
 
     def _start_account_services(self) -> None:
@@ -300,6 +361,9 @@ class Application:
 
     def stop_services(self) -> None:
         """Stop all background services and release resources."""
+        self.diagnostics.dispose()
+        self.hotkeys.dispose()
+        self.broadcast.dispose()
         self.gsi_server.stop()
         if self.replay_server.is_running:
             self.replay_server.stop()
@@ -321,3 +385,6 @@ class Application:
     # ------------------------------------------------------------------ #
     def _on_settings_changed(self, settings: AppSettings) -> None:
         self.gsi_receiver.update_auth(settings.gsi.auth_token, settings.gsi.require_auth)
+
+    def _on_gsi_connection(self, event: GSIConnectionChanged) -> None:
+        self._gsi_connected = event.connected
