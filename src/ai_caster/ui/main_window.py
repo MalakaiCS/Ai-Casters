@@ -27,9 +27,11 @@ from ai_caster.core.logging import get_logger
 from ai_caster.ui.qt_event_bridge import QtEventBridge
 from ai_caster.ui.views.capture_view import CaptureView
 from ai_caster.ui.views.dashboard import DashboardView
+from ai_caster.ui.views.director_view import DirectorView
 from ai_caster.ui.views.gsi_view import GSIView
 from ai_caster.ui.views.match_view import MatchView
 from ai_caster.ui.views.placeholder import PlaceholderView
+from ai_caster.ui.views.replay_view import ReplayView
 from ai_caster.ui.views.settings_view import SettingsView
 from ai_caster.ui.views.statistics_view import StatisticsView
 from ai_caster.ui.views.vision_view import VisionView
@@ -68,15 +70,21 @@ class MainWindow(QMainWindow):
         self._statistics_view = StatisticsView(application.statistics)
         self._capture_view = CaptureView(application.capture)
         self._vision_view = VisionView(application.vision)
+        self._director_view = DirectorView(application.director)
+        self._replay_view = ReplayView(
+            application.replay_receiver, application.replay_server.address
+        )
         self._settings_view = SettingsView(application.settings_manager)
 
-        # Live views (Milestones 1–4).
+        # Live views (Milestones 1–5).
         self._add_view("Dashboard", self._dashboard)
         self._add_view("Live GSI", self._gsi_view)
         self._add_view("Match Engine", self._match_view)
         self._add_view("Statistics", self._statistics_view)
         self._add_view("Video Capture", self._capture_view)
         self._add_view("Computer Vision", self._vision_view)
+        self._add_view("Commentary Director", self._director_view)
+        self._add_view("Replay", self._replay_view)
         self._add_view("Settings", self._settings_view)
 
         # Placeholders for future modules (navigable from day one).
@@ -96,6 +104,9 @@ class MainWindow(QMainWindow):
         self._bridge.capture_status.connect(self._capture_view.on_capture_status)
         self._bridge.capture_stats.connect(self._capture_view.on_capture_stats)
         self._bridge.vision_state.connect(self._vision_view.on_vision_state)
+        self._bridge.directive_issued.connect(self._director_view.on_directive)
+        self._bridge.replay_state.connect(self._director_view.on_replay_state)
+        self._bridge.replay_state.connect(self._replay_view.on_replay_state)
 
         self.statusBar().showMessage(f"GSI endpoint: {application.gsi_server.address}")
 
@@ -105,8 +116,6 @@ class MainWindow(QMainWindow):
 
     def _add_placeholders(self) -> None:
         future = [
-            ("Commentary Director", "Milestone 5", "Decides who speaks, when, and broadcast flow."),
-            ("Replay", "Milestone 5", "External replay events; never call replays live."),
             ("Play-by-Play AI", "Milestone 6", "High-energy original play-by-play commentary."),
             ("Analyst AI", "Milestone 6", "Longer analytical, strategic commentary."),
             ("Voice Engine", "Milestone 7", "Two independent voice channels + monitor mix."),

@@ -208,6 +208,12 @@ class CommentarySettings(_Section):
         default=0, ge=0, le=10000, description="Broadcast delay applied before speaking."
     )
     allow_interruptions: bool = True
+    min_speech_gap_ms: int = Field(
+        default=800,
+        ge=0,
+        le=10000,
+        description="Minimum gap between non-interrupting directives (rate limiting).",
+    )
 
 
 class LicensingSettings(_Section):

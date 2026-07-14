@@ -100,7 +100,7 @@ Deliverables:
 - Unit + threaded tests for the frame, source, buffer, timing, pipeline and
   factory (incl. clean errors when native deps are absent).
 
-### ✅ Milestone 4 — Computer Vision *(current)*
+### ✅ Milestone 4 — Computer Vision
 **Goal:** watch the captured feed and produce confidence-scored observations,
 fused into the Match Engine without ever overriding confirmed GSI.
 
@@ -124,10 +124,29 @@ Deliverables:
 - Unit tests for colour, ROI, every detector, state assembly, fusion, the
   pipeline (analysis/throttle/attach), the ONNX guard paths and engine fusion.
 
-### Milestone 5 — Commentary Director + Replay Integration
-Broadcast-flow controller (who speaks, when, interruptions, handoffs, silence,
-replay transitions, excitement). Replay event ingestion and "never call replay
-live" enforcement.
+### ✅ Milestone 5 — Commentary Director + Replay Integration *(current)*
+**Goal:** an internal controller that governs broadcast flow (it decides, it
+never speaks), plus authoritative replay integration that enforces the hard rule
+*never describe replay footage as live.*
+
+Deliverables:
+- **Commentary Director** (Module 10): consumes match events, the live model,
+  vision and replay state and emits `CommentaryDirective` decisions — speaker
+  selection (play-by-play vs. analyst), priority, excitement (scaled by round
+  importance), interruption/cancellation, rate-limited silence, and post-round
+  handoffs. Pure policy helpers make every decision testable.
+- **Replay Integration** (Module 15): a framework-agnostic `ReplayReceiver` for
+  external replay events (started/ended/speed/type) with a FastAPI transport on
+  its own port, publishing authoritative `ReplayStateChanged`.
+- **"Never live during replay" enforcement**: while an authoritative replay is
+  active, play-by-play "call live action" directives are replaced with an
+  explicit silence decision. A tested `is_live_broadcast` primitive honours the
+  priority of truth (external replay > vision guess).
+- **Config + UI**: `min_speech_gap_ms` setting; Commentary Director view (live
+  vs. replay state + directive feed) and a Replay view (state + local test
+  controls).
+- Unit tests for replay (models/receiver/HTTP), the pure policy, and the
+  Director's routing/interruption/handoff/silence/replay behaviour.
 
 ### Milestone 6 — Play-by-Play AI + Analyst AI
 Two independent commentary generators with pluggable AI providers. Original

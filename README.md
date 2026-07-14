@@ -65,6 +65,18 @@ human caster required.
   Server > GSI > Vision > Inference, never overrides confirmed GSI.
 - **Computer Vision view** — live scene classification and cue confidences.
 
+**Milestone 5 — Commentary Director + Replay Integration**
+
+- **Commentary Director** — decides broadcast flow (who speaks, priority,
+  excitement, interruptions, handoffs, silence) and emits `CommentaryDirective`s.
+  It never writes prose — the M6 AIs turn directives into words.
+- **Replay Integration** — a receiver + HTTP endpoint for external replay events
+  (started/ended/speed/type) with authoritative replay state.
+- **"Never live during replay"** — while a replay is active, play-by-play
+  live-action calls become an explicit silence decision.
+- **Director & Replay views** — live/replay state, a directive feed, and local
+  replay test controls.
+
 ## Quick start
 
 ```bash

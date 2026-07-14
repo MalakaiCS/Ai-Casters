@@ -22,12 +22,15 @@ from ai_caster.config.models import AppSettings
 from ai_caster.core.events import EventBus
 from ai_caster.core.logging import configure_logging, get_logger
 from ai_caster.core.paths import AppPaths, get_app_paths
+from ai_caster.director.director import CommentaryDirector
 from ai_caster.gsi.receiver import GSIReceiver
 from ai_caster.gsi.server import GSIServer
 from ai_caster.match.engine import MatchStateEngine
 from ai_caster.match.state import MatchStateStore
 from ai_caster.persistence.database import Database
 from ai_caster.persistence.repository import MatchRepository
+from ai_caster.replay.receiver import ReplayReceiver
+from ai_caster.replay.server import ReplayServer
 from ai_caster.statistics.engine import StatisticsEngine
 from ai_caster.vision.factory import create_vision_pipeline
 
@@ -103,6 +106,22 @@ class Application:
         self.vision = create_vision_pipeline(settings.vision, self.event_bus)
         self.vision.attach(self.capture)
 
+        # --- replay integration (Module 15) ------------------------------- #
+        self.replay_receiver = ReplayReceiver(self.event_bus)
+        self.replay_server = ReplayServer(
+            self.replay_receiver, host="127.0.0.1", port=settings.replay.listen_port
+        )
+
+        # --- commentary director (Module 10) ------------------------------ #
+        self.director = CommentaryDirector(
+            self.event_bus,
+            baseline_excitement=settings.commentary.excitement,
+            allow_interruptions=settings.commentary.allow_interruptions,
+            min_speech_gap=settings.commentary.min_speech_gap_ms / 1000.0,
+            replay_integration_enabled=settings.replay.enabled,
+            treat_unknown_as_live=settings.replay.treat_unknown_as_live,
+        )
+
         # Re-apply GSI auth whenever settings change so edits take effect live.
         self.settings_manager.add_observer(self._on_settings_changed)
 
@@ -114,16 +133,22 @@ class Application:
         return self.settings_manager.settings
 
     def start_services(self) -> None:
-        """Start all background services (currently the GSI server)."""
+        """Start all background services (GSI server, and the replay server when
+        replay integration is enabled)."""
         self.gsi_server.start()
+        if self.settings.replay.enabled:
+            self.replay_server.start()
         self._log.info("Core services started")
 
     def stop_services(self) -> None:
         """Stop all background services and release resources."""
         self.gsi_server.stop()
+        if self.replay_server.is_running:
+            self.replay_server.stop()
         self.vision.detach()
         if self.capture.is_running:
             self.capture.stop()
+        self.director.dispose()
         self.match_engine.dispose()
         if self.database is not None:
             self.database.close()

@@ -150,6 +150,31 @@ the latest `VisionState` to `LiveMatch.visual` as an **annotation**; the
 GSI-authoritative gameplay fields are never derived from vision, so uncertain
 vision can never override confirmed match data.
 
+## Milestone 5 additions
+
+### Commentary Director (`director/`) and Replay (`replay/`)
+The **Commentary Director** is the broadcast-flow brain: it subscribes to match
+events, the live model, vision and replay state and emits `CommentaryDirective`
+decisions — which role should speak (play-by-play vs. analyst), at what priority
+and excitement, whether a directive interrupts current speech, and when to stay
+silent or hand off. It **never generates prose**; the M6 AIs do that. The
+decision surface is split into pure policy functions (`director/policy.py`:
+speaker/priority/excitement/context/`is_live_broadcast`) and a thin stateful
+`CommentaryDirector` that applies them with an injectable clock, so interruption
+and rate-limit behaviour is deterministic under test. A speaking-time budget per
+priority governs interruption (a strictly higher priority cuts in) and yielding
+(equal/lower priority stays silent), with the configured `min_speech_gap_ms` as a
+floor.
+
+**Replay integration** mirrors GSI: a framework-agnostic `ReplayReceiver`
+(`handle_event`) maintains the authoritative `ReplayState` from external events,
+with a FastAPI transport on its own port. The Director consumes replay state to
+enforce the project's hardest rule — *never describe replay footage as live*:
+while an authoritative replay is active, play-by-play live-action directives are
+replaced by an explicit silence decision. `is_live_broadcast` ranks the external
+replay signal above the vision replay *hint*, consistent with Server > GSI >
+Vision > Inference.
+
 ## Package layout
 
 ```
@@ -201,6 +226,14 @@ src/ai_caster/
 │   ├── pipeline.py    # throttled frame analysis + publish
 │   ├── factory.py     # build detectors + pipeline from VisionSettings
 │   └── detectors/     # analytic detectors + optional ONNX detector
+├── director/
+│   ├── directives.py  # Module 10: CommentaryDirective + enums
+│   ├── policy.py      # pure speaker/priority/excitement/live-resolution helpers
+│   └── director.py    # stateful broadcast-flow controller
+├── replay/
+│   ├── models.py      # Module 15: ReplayState / ReplayType
+│   ├── receiver.py    # framework-agnostic replay-event ingest
+│   └── server.py      # FastAPI replay transport
 └── ui/
     ├── main_window.py # Module 1: PySide6 shell + navigation
     ├── qt_event_bridge.py
@@ -218,8 +251,8 @@ src/ai_caster/
 
 ## Testing
 `pytest` drives everything. Domain modules (config, gsi, match, detection,
-statistics, persistence, capture, vision) have no Qt dependency and run headless
-in CI.
+statistics, persistence, capture, vision, director, replay) have no Qt
+dependency and run headless in CI.
 The FastAPI endpoint is tested with Starlette's `TestClient`; persistence is
 tested against a temp-file SQLite database; the Match Engine is tested end-to-end
 by publishing GSI payloads on the bus and asserting on the model, events, stats
