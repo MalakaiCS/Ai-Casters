@@ -28,7 +28,7 @@ from ai_caster.commentary.factory import create_provider
 from ai_caster.commentary.generator import CommentaryGenerator
 from ai_caster.config.deploy import deploy_overrides
 from ai_caster.config.manager import SettingsManager
-from ai_caster.config.models import AppSettings
+from ai_caster.config.models import AccountProvider, AppSettings
 from ai_caster.core.events import EventBus, GSIConnectionChanged
 from ai_caster.core.identity import get_or_create_device_id
 from ai_caster.core.logging import configure_logging, get_logger
@@ -201,20 +201,28 @@ class Application:
         # sessions and license seats together.
         self.device_id = get_or_create_device_id(self.paths.config_dir)
 
+        # Deployment defaults only seed a *fresh* settings file, so an install that
+        # upgraded over an older build keeps its old (offline) account section. The
+        # account service is deployment configuration, not a user preference, so
+        # overlay the build-baked Supabase account whenever the stored settings
+        # aren't already Supabase-configured — this is what actually enables
+        # sign-in on upgraded installs.
+        account = self._effective_account(settings.account)
+
         self.auth = AuthClient(
             self.event_bus,
-            create_auth_backend(settings.account),
+            create_auth_backend(account),
             device_id=self.device_id,
             store=SessionStore(self.paths.config_dir / "session.json"),
-            remember=settings.account.remember,
+            remember=account.remember,
         )
 
         # Team roster / role management (Admin+); no-op unless Supabase-backed.
-        self.team = create_team_client(settings.account)
+        self.team = create_team_client(account)
 
         self.licensing = LicensingClient(
             self.event_bus,
-            create_licensing_backend(settings.licensing, settings.account),
+            create_licensing_backend(settings.licensing, account),
             device_id=self.device_id,
             cache=LicenseCache(self.paths.cache_dir / "license.json"),
             offline_cache_days=settings.licensing.offline_cache_days,
@@ -236,7 +244,7 @@ class Application:
 
         self.sync = SettingsSyncClient(
             self.event_bus,
-            create_sync_backend(settings.sync, settings.account),
+            create_sync_backend(settings.sync, account),
             self.settings_manager,
             self.auth,
             self.licensing,
@@ -374,6 +382,38 @@ class Application:
     # ------------------------------------------------------------------ #
     # Internals
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _effective_account(account):  # noqa: ANN001, ANN205 - AccountSettings in/out
+        """Overlay the build-baked Supabase account onto stored settings.
+
+        Deployment defaults only seed a brand-new settings file; an upgraded
+        install keeps its old ``offline`` account section, which would leave
+        sign-in disabled. Since the account service is deployment configuration
+        (not a user choice), fall back to the baked Supabase URL/key from
+        :func:`deploy_overrides` whenever the stored account isn't already
+        Supabase-configured. Returns the account unchanged when nothing is baked.
+        """
+        if (
+            account.provider is AccountProvider.SUPABASE
+            and account.supabase_url
+            and account.supabase_anon_key
+        ):
+            return account
+        baked = deploy_overrides().get("account", {})
+        if (
+            baked.get("provider") == "supabase"
+            and baked.get("supabase_url")
+            and baked.get("supabase_anon_key")
+        ):
+            return account.model_copy(
+                update={
+                    "provider": AccountProvider.SUPABASE,
+                    "supabase_url": baked["supabase_url"],
+                    "supabase_anon_key": baked["supabase_anon_key"],
+                }
+            )
+        return account
+
     def _on_settings_changed(self, settings: AppSettings) -> None:
         self.gsi_receiver.update_auth(settings.gsi.auth_token, settings.gsi.require_auth)
         # Apply tone/pacing edits (e.g. from the training view) to the live director.
