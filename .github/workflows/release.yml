@@ -105,10 +105,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          $tag = "${{ steps.tag.outputs.tag }}"
+          # Replace any existing release for this tag so re-cutting the same
+          # version (e.g. to bake in newly-added secrets) works cleanly. Removing
+          # the tag too lets `gh release create` re-point it at the current commit.
+          gh release delete "$tag" --yes --cleanup-tag 2>$null
           # gh creates the tag at the current commit if it does not exist yet.
           # manifest.json is attached so releases/latest/download/manifest.json
           # always points at the newest release for the auto-updater.
-          gh release create "${{ steps.tag.outputs.tag }}" `
+          gh release create "$tag" `
             "dist/installer/AICasters-Setup.exe" `
             "dist/installer/manifest.json" `
             --target "${env:GITHUB_SHA}" `
