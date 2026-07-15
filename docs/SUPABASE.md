@@ -99,22 +99,45 @@ requires the `CLOUD_SYNC` entitlement (Studio tier), so set that user's
 `profiles.tier` to `studio` to exercise it.
 
 ```sql
--- Per-user profile with subscription tier. Created automatically on sign-up.
+-- Per-user profile with subscription tier and RBAC role. Created automatically
+-- on sign-up. `role` drives in-app permissions (see "User roles" below).
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   email text,
+  display_name text,
   tier text not null default 'free',
+  role text not null default 'user'
+    check (role in ('owner','founder','admin','staff','partner','user')),
   created_at timestamptz not null default now()
 );
 
 alter table public.profiles enable row level security;
 
+-- A user can always read their own row.
 create policy "profiles are readable by owner"
   on public.profiles for select using (auth.uid() = id);
-create policy "profiles are updatable by owner"
-  on public.profiles for update using (auth.uid() = id);
 
--- Auto-create a profile row when a new auth user is created.
+-- Managers (admin/founder/owner) can read every profile for the Team view.
+create policy "profiles are readable by managers"
+  on public.profiles for select using (
+    exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.role in ('owner','founder','admin')
+    )
+  );
+
+-- A user may update their own row but MUST NOT change their own role or tier
+-- (those are set only by the set_user_role RPC / the server).
+create policy "profiles are updatable by owner"
+  on public.profiles for update using (auth.uid() = id)
+  with check (
+    auth.uid() = id
+    and role = (select role from public.profiles where id = auth.uid())
+    and tier = (select tier from public.profiles where id = auth.uid())
+  );
+
+-- Auto-create a profile row when a new auth user is created (role defaults to
+-- 'user'; the very first Owner is set once by hand — see "User roles").
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
@@ -155,6 +178,74 @@ With those tables in place and the providers switched on (step 5b), the licensin
 client reads `profiles.tier` via PostgREST at `/rest/v1/profiles` and the
 settings-sync client reads/writes `user_settings.settings` — all authenticated
 with the signed-in user's access token and enforced by RLS.
+
+---
+
+## 5c. User roles (Owner / Founder / Admin / Staff / Partner / User)
+
+Roles form a strict hierarchy (Owner is highest, User is the default). They gate
+in-app features:
+
+| Role | Grants |
+|------|--------|
+| **Owner** | Everything, including assigning any role below Owner |
+| **Founder** | Manage the team, train the AI |
+| **Admin** | Manage the team (assign roles below Admin), train the AI |
+| **Staff** | Train the AI (vocabulary / tone / excitement) |
+| **Partner** | Standard access |
+| **User** *(default)* | Standard access |
+
+The app reads the signed-in user's `profiles.role` after login. Changing a role
+goes through a **security-definer RPC** so the anon key can't be used to escalate:
+the function re-checks the caller's own role and refuses to grant a role at or
+above the caller's rank.
+
+```sql
+-- Rank helper: higher number = more privileged.
+create or replace function public.role_rank(r text)
+returns int language sql immutable as $$
+  select case r
+    when 'owner' then 6 when 'founder' then 5 when 'admin' then 4
+    when 'staff' then 3 when 'partner' then 2 else 1 end;
+$$;
+
+-- Change a member's role. Only admin+ may call it, and only to grant a role
+-- STRICTLY BELOW the caller's own rank (so no one can create a peer/superior).
+create or replace function public.set_user_role(target_user uuid, new_role text)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  caller_role text;
+begin
+  select role into caller_role from public.profiles where id = auth.uid();
+  if caller_role is null or public.role_rank(caller_role) < public.role_rank('admin') then
+    raise exception 'insufficient privileges' using errcode = '42501';
+  end if;
+  if new_role not in ('owner','founder','admin','staff','partner','user') then
+    raise exception 'invalid role';
+  end if;
+  if public.role_rank(new_role) >= public.role_rank(caller_role) then
+    raise exception 'cannot assign a role at or above your own' using errcode = '42501';
+  end if;
+  if public.role_rank((select role from public.profiles where id = target_user))
+     >= public.role_rank(caller_role) then
+    raise exception 'cannot modify a peer or superior' using errcode = '42501';
+  end if;
+  update public.profiles set role = new_role where id = target_user;
+end; $$;
+
+revoke all on function public.set_user_role(uuid, text) from public;
+grant execute on function public.set_user_role(uuid, text) to authenticated;
+```
+
+**Bootstrap the first Owner** (run once, after you've signed up your own account):
+
+```sql
+update public.profiles set role = 'owner'
+where email = 'you@example.com';  -- your account's email
+```
+
+After that, sign in from the app and use **Team & Roles** to promote everyone
+else — no more SQL needed.
 
 ---
 

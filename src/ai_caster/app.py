@@ -19,6 +19,7 @@ from ai_caster import __version__
 from ai_caster.auth.client import AuthClient
 from ai_caster.auth.factory import create_auth_backend
 from ai_caster.auth.store import SessionStore
+from ai_caster.auth.team import create_team_client
 from ai_caster.broadcast.controller import BroadcastController
 from ai_caster.capture.factory import create_frame_source
 from ai_caster.capture.pipeline import CapturePipeline
@@ -207,6 +208,9 @@ class Application:
             store=SessionStore(self.paths.config_dir / "session.json"),
             remember=settings.account.remember,
         )
+
+        # Team roster / role management (Admin+); no-op unless Supabase-backed.
+        self.team = create_team_client(settings.account)
 
         self.licensing = LicensingClient(
             self.event_bus,
