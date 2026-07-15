@@ -2,13 +2,15 @@
 
 A **standalone, offline** analysis tool (not part of the live casting engine). It
 learns *general* timing/pacing and generic vocabulary tendencies from **authorized
-transcripts** and exports an anonymized style profile.
+recordings/transcripts** and exports an anonymized style profile.
 
-Its guardrails are the whole point and are enforced at the boundary: transcripts
-only (**no audio, so no voice cloning**), authorized + consent-referenced sources
-only, speakers anonymized to generic roles, and proper nouns excluded from learned
-vocabulary — so **no identifiable individual is modelled or imitated**. The profile
-can *suggest* pacing defaults for review; it is never applied automatically.
+Its guardrails are the whole point and are enforced at the boundary: **authorized
++ consent-referenced sources only**; audio/video is used solely to derive a
+**transcript + timing** (no voice model is built, no speaker identified, and
+third-party platform links are refused); speakers are anonymized to generic roles;
+and proper nouns are excluded from learned vocabulary — so **no identifiable
+individual is modelled or imitated**. The profile can *suggest* pacing defaults for
+review; it is never applied automatically.
 """
 
 from ai_caster.training.guardrails import (
@@ -18,6 +20,7 @@ from ai_caster.training.guardrails import (
     anonymize_role,
 )
 from ai_caster.training.ingest import load_source_file, load_sources, parse_source
+from ai_caster.training.media import MediaSourceError, reject_platform_url, transcribe_media
 from ai_caster.training.models import (
     Authorization,
     PacingProfile,
@@ -27,6 +30,7 @@ from ai_caster.training.models import (
     VocabularyProfile,
 )
 from ai_caster.training.pipeline import TrainingPipeline
+from ai_caster.training.transcribe import Transcriber, WhisperTranscriber
 
 __all__ = [
     "POLICY",
@@ -36,6 +40,11 @@ __all__ = [
     "parse_source",
     "load_source_file",
     "load_sources",
+    "transcribe_media",
+    "reject_platform_url",
+    "MediaSourceError",
+    "Transcriber",
+    "WhisperTranscriber",
     "Authorization",
     "TranscriptSegment",
     "TrainingSource",

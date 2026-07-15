@@ -67,6 +67,12 @@ hotkeys = ["pynput>=1.7"]
 # without it; this adds accurate per-process CPU and memory sampling.
 diagnostics = ["psutil>=5.9"]
 
+# Offline training from AUTHORIZED recordings (Module 18). Optional: the pipeline
+# analyses text transcripts with no extra deps; this adds local speech-to-text
+# (faster-whisper) so authorized recordings can be transcribed to text + timing
+# for general pacing/vocabulary learning. No voice model is ever built.
+training = ["faster-whisper>=1.0"]
+
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",

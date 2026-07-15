@@ -48,6 +48,7 @@ pip install -e ".[ui]"
 | `obs` | obsws-python | OBS scene switching |
 | `hotkeys` | pynput | True OS-global hotkeys (UI buttons work without it) |
 | `diagnostics` | psutil | Accurate CPU/memory in the dashboard |
+| `training` | faster-whisper | Transcribe your own authorized recordings for the offline trainer |
 | `dev` | pytest, ruff, httpx | Running the test suite / linters |
 
 Everything at once (a full production box):
@@ -128,11 +129,17 @@ monitor mix.
 
 - **Offline default:** the synthetic TTS and null sinks produce/route audio with
   no hardware — good for testing the whole path.
-- **Real output:** install the `voice` extra, then in **Settings → Voice** set
+- **Real OS speech:** install the `voice` extra, then in **Settings → Voice** set
   `tts_engine` to `system` (pyttsx3) and assign each channel an `output_device`
   (and a `monitor_device` for your headphones). A common routing is
   *play-by-play → Cable A*, *analyst → Cable B*, *monitor → headphones*, with the
   cables captured in OBS.
+- **Production voices (ElevenLabs):** set `tts_engine` to `elevenlabs`, paste your
+  key into `elevenlabs_api_key`, and (optionally) pick a `elevenlabs_model`
+  (`eleven_turbo_v2_5`/`eleven_flash_v2_5` are the low-latency options). Each
+  channel can be given a different ElevenLabs `voice_id` so play-by-play and
+  analyst sound distinct. If the key is missing or a request fails, the engine
+  falls back to the offline synthetic voice rather than going silent.
 - Per-channel compressor/EQ/limiter and volume/mute live in the same section and
   in the **Voice, Audio & OBS** view.
 
@@ -236,6 +243,30 @@ Unauthorized or audio-bearing files are refused (or skipped with
 `--skip-unauthorized`). The exported profile is aggregate, anonymized statistics
 and can *suggest* Director pacing values for you to review — it is never applied
 automatically.
+
+### Learning from real recordings (authorized only)
+
+You can also learn general pacing from **recordings you own or are licensed to
+use** — the recording is transcribed locally to *text + timing* and folded
+through the same anonymization; **no voice model is ever built and no speaker is
+identified.** Install the training extra (`pip install -e ".[training]"`, which
+adds `faster-whisper`) and point `--media` at a local file or a direct link to
+your own upload:
+
+```bash
+ai-caster train --media ./casts/final.wav --media ./casts/semis.mp4 \
+  --consent-ref "OWN-RECORDING-2026-004" --rights-holder "My Team" \
+  --out style-profile.json
+```
+
+- `--consent-ref` is **required** with `--media`: it is your affirmation that you
+  hold the rights to those recordings.
+- **Third-party platform links are refused.** YouTube / Twitch / TikTok / etc.
+  URLs are rejected outright — downloading someone else's broadcast is a rights
+  problem, not a feature. Use your own recordings or clips you are licensed to use.
+- `--media` and a transcript directory can be combined in one run; use
+  `--whisper-model` (default `base`) and `--language` (default `en`) to tune
+  transcription.
 
 ---
 

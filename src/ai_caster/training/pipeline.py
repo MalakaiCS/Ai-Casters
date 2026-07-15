@@ -50,6 +50,29 @@ class TrainingPipeline:
         self._sources.extend(loaded)
         return len(loaded)
 
+    def add_media(
+        self,
+        source,
+        *,
+        authorization,
+        transcriber,
+        language: str = "en",
+        source_id: str | None = None,
+    ):
+        """Transcribe an authorized recording and add it as a source.
+
+        A thin wrapper over :func:`~ai_caster.training.media.transcribe_media`; the
+        recording is turned into an anonymized transcript (no voice model, generic
+        role) before it enters the general-style analysis.
+        """
+        from ai_caster.training.media import transcribe_media
+
+        parsed = transcribe_media(
+            source, transcriber, authorization, language=language, source_id=source_id
+        )
+        self._sources.append(parsed)
+        return parsed
+
     def run(self) -> StyleProfile:
         """Analyse the gathered sources into a single aggregate style profile."""
         language = self._sources[0].language if self._sources else "en"

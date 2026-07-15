@@ -109,7 +109,13 @@ class VoiceSettings(_Section):
     monitor_volume: float = Field(default=0.8, ge=0.0, le=1.0)
     sample_rate: int = Field(default=24000, ge=8000, le=48000)
     tts_engine: str = Field(
-        default="synthetic", description="TTS engine: 'synthetic' (offline) or 'system'."
+        default="synthetic",
+        description="TTS engine: 'synthetic' (offline), 'system' (pyttsx3) or 'elevenlabs'.",
+    )
+    elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key (xi-api-key).")
+    elevenlabs_model: str = Field(
+        default="eleven_turbo_v2_5",
+        description="ElevenLabs model id (turbo/flash for low latency).",
     )
 
 

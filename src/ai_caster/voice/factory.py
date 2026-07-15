@@ -23,8 +23,18 @@ def _available(module: str) -> bool:
 
 
 def create_tts(settings: VoiceSettings) -> TTSEngine:
-    """Choose a TTS engine (synthetic by default; system if selected/available)."""
-    if settings.tts_engine == "system":
+    """Choose a TTS engine (synthetic offline default; system or ElevenLabs)."""
+    if settings.tts_engine == "elevenlabs":
+        if settings.elevenlabs_api_key:
+            from ai_caster.voice.tts.elevenlabs import ElevenLabsTTS
+
+            return ElevenLabsTTS(
+                settings.elevenlabs_api_key,
+                model=settings.elevenlabs_model,
+                sample_rate=settings.sample_rate,
+            )
+        _log.warning("ElevenLabs selected but no API key set; using synthetic TTS.")
+    elif settings.tts_engine == "system":
         if _available("pyttsx3"):
             from ai_caster.voice.tts.system import SystemTTS
 
