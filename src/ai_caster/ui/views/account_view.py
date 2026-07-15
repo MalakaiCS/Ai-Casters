@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import threading
 
-from PySide6.QtCore import QUrl, Signal
+from PySide6.QtCore import QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
+    QApplication,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -31,8 +32,9 @@ from ai_caster.updater.updater import AutoUpdater
 class AccountView(QWidget):
     """Login, subscription/entitlements, devices and update status."""
 
-    # Emitted from the update-check worker thread; delivered on the Qt thread.
+    # Emitted from worker threads; delivered on the Qt thread.
     _update_result = Signal(object)  # -> UpdateCheck | Exception
+    _install_result = Signal(object)  # -> Path | Exception
 
     def __init__(self, auth: AuthClient, licensing: LicensingClient, updater: AutoUpdater) -> None:
         super().__init__()
@@ -52,6 +54,7 @@ class AccountView(QWidget):
         root.addStretch(1)
 
         self._update_result.connect(self._apply_update_result)
+        self._install_result.connect(self._apply_install_result)
         self._refresh_account()
         self._refresh_license()
 
@@ -107,8 +110,8 @@ class AccountView(QWidget):
         buttons = QHBoxLayout()
         self._check_btn = QPushButton("Check for updates")
         self._check_btn.clicked.connect(self._on_check_updates)
-        self._download_btn = QPushButton("Download update")
-        self._download_btn.clicked.connect(self._on_download)
+        self._download_btn = QPushButton("Download && install")
+        self._download_btn.clicked.connect(self._on_install)
         self._download_btn.setVisible(False)
         buttons.addWidget(self._check_btn)
         buttons.addWidget(self._download_btn)
@@ -154,10 +157,35 @@ class AccountView(QWidget):
             result = exc
         self._update_result.emit(result)
 
-    def _on_download(self) -> None:
-        if self._pending_update is None or not self._pending_update.url:
+    def _on_install(self) -> None:
+        update = self._pending_update
+        if update is None or not update.url:
             return
-        QDesktopServices.openUrl(QUrl(self._pending_update.url))
+        self._download_btn.setEnabled(False)
+        self._check_btn.setEnabled(False)
+        self._update_label.setText("Downloading update…")
+        threading.Thread(
+            target=self._run_install, args=(update,), name="update-install", daemon=True
+        ).start()
+
+    def _run_install(self, update) -> None:  # noqa: ANN001 - UpdateInfo
+        try:
+            self._updater.download_and_install(update)
+            self._install_result.emit(True)
+        except Exception as exc:  # noqa: BLE001 - report + offer the manual download
+            self._install_result.emit(exc)
+
+    def _apply_install_result(self, result) -> None:  # noqa: ANN001 - True | Exception
+        if isinstance(result, Exception):
+            self._download_btn.setEnabled(True)
+            self._check_btn.setEnabled(True)
+            self._update_label.setText("Download failed — opening the download page instead.")
+            if self._pending_update is not None and self._pending_update.url:
+                QDesktopServices.openUrl(QUrl(self._pending_update.url))
+            return
+        # Installer launched: close the app so it can replace the running files.
+        self._update_label.setText("Installer launched — closing to apply the update…")
+        QTimer.singleShot(1200, QApplication.quit)
 
     # ------------------------------------------------------------------ #
     # Refresh helpers

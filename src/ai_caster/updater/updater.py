@@ -108,6 +108,32 @@ class AutoUpdater:
             raise ValueError("Downloaded update failed checksum verification.")
         return dest
 
+    def download_and_install(self, update: UpdateInfo, *, silent: bool = False) -> Path:
+        """Download + verify the installer, then launch it to update the app.
+
+        Returns the installer path. The caller is expected to quit the app right
+        after so the installer can replace the running files. Only the actual
+        launch is platform-specific; the download and checksum are shared/tested.
+        """
+        installer = self.download(update)
+        self.launch_installer(installer, silent=silent)
+        return installer
+
+    def launch_installer(self, path: Path, *, silent: bool = False) -> None:
+        """Start the downloaded installer as a detached process."""
+        import subprocess
+        import sys
+
+        args = [str(path)]
+        if silent:
+            # Inno Setup switches: run without the wizard but keep a progress bar.
+            args += ["/SILENT", "/NOCANCEL", "/NORESTART"]
+        _log.info("Launching installer: %s", path)
+        if sys.platform == "win32":  # pragma: no cover - Windows launch
+            subprocess.Popen(args, close_fds=True)
+        else:  # pragma: no cover - non-Windows launch
+            subprocess.Popen(args)
+
     # ------------------------------------------------------------------ #
     # Internals
     # ------------------------------------------------------------------ #
