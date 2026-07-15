@@ -189,6 +189,14 @@ def run_desktop_app(argv: list[str] | None = None) -> int:
             "Change the port in Settings and restart.",
         )
 
+    # Accounts are required: gate on sign-in (a restored session skips this).
+    from ai_caster.ui.auth_window import require_sign_in
+
+    if not require_sign_in(application.auth):
+        _log.info("Sign-in dismissed; exiting.")
+        application.stop_services()
+        return 0
+
     window = MainWindow(application)
     window.show()
     return qt_app.exec()
