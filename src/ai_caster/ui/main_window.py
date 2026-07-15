@@ -41,6 +41,7 @@ from ai_caster.ui.views.replay_view import ReplayView
 from ai_caster.ui.views.settings_view import SettingsView
 from ai_caster.ui.views.statistics_view import StatisticsView
 from ai_caster.ui.views.team_view import TeamView
+from ai_caster.ui.views.training_view import TrainingView
 from ai_caster.ui.views.vision_view import VisionView
 from ai_caster.ui.views.voice_view import VoiceView
 
@@ -106,6 +107,7 @@ class MainWindow(QMainWindow):
             application.auth, application.licensing, application.updater
         )
         self._team_view = TeamView(application.auth, application.team)
+        self._training_view = TrainingView(application.auth, application.settings_manager)
         self._diagnostics_view = DiagnosticsView(
             application.paths.log_dir if application.settings.logging.log_to_file else None,
             log_tail_lines=application.settings.diagnostics.log_tail_lines,
@@ -125,6 +127,7 @@ class MainWindow(QMainWindow):
         self._add_view("Replay", self._replay_view)
         self._add_view("Account & License", self._account_view)
         self._add_view("Team & Roles", self._team_view)
+        self._add_view("Train the AI", self._training_view)
         self._add_view("Diagnostics", self._diagnostics_view)
         self._add_view("Settings", self._settings_view)
 
@@ -150,6 +153,7 @@ class MainWindow(QMainWindow):
         self._bridge.replay_state.connect(self._voice_view.on_replay_state)
         self._bridge.auth_state.connect(self._account_view.on_auth_state)
         self._bridge.auth_state.connect(self._team_view.on_auth_state)
+        self._bridge.auth_state.connect(self._training_view.on_auth_state)
         self._bridge.license_state.connect(self._account_view.on_license_state)
         self._bridge.update_available.connect(self._account_view.on_update_available)
         self._bridge.diagnostics.connect(self._diagnostics_view.on_diagnostics)

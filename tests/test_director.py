@@ -170,3 +170,17 @@ def test_excitement_uses_round_importance_from_model():
     bus.publish(MatchModelUpdated(match=live))
     directives = director.handle_match_event(Kill())
     assert directives[0].excitement > 0.5
+
+
+def test_configure_updates_tone_and_pacing_live():
+    director, _issued, _ = _director(
+        baseline_excitement=0.5, allow_interruptions=True, min_speech_gap=0.8
+    )
+    director.configure(baseline_excitement=0.9, allow_interruptions=False, min_speech_gap=1.5)
+    assert director._baseline == 0.9
+    assert director._allow_interruptions is False
+    assert director._min_gap == 1.5
+    # Partial updates leave other values untouched.
+    director.configure(baseline_excitement=0.2)
+    assert director._baseline == 0.2
+    assert director._min_gap == 1.5

@@ -376,6 +376,12 @@ class Application:
     # ------------------------------------------------------------------ #
     def _on_settings_changed(self, settings: AppSettings) -> None:
         self.gsi_receiver.update_auth(settings.gsi.auth_token, settings.gsi.require_auth)
+        # Apply tone/pacing edits (e.g. from the training view) to the live director.
+        self.director.configure(
+            baseline_excitement=settings.commentary.excitement,
+            allow_interruptions=settings.commentary.allow_interruptions,
+            min_speech_gap=settings.commentary.min_speech_gap_ms / 1000.0,
+        )
 
     def _on_gsi_connection(self, event: GSIConnectionChanged) -> None:
         self._gsi_connected = event.connected

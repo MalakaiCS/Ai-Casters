@@ -81,6 +81,25 @@ class CommentaryDirector:
         ]
 
     # ------------------------------------------------------------------ #
+    # Live reconfiguration
+    # ------------------------------------------------------------------ #
+    def configure(
+        self,
+        *,
+        baseline_excitement: float | None = None,
+        allow_interruptions: bool | None = None,
+        min_speech_gap: float | None = None,
+    ) -> None:
+        """Apply tone/pacing changes live (e.g. from the training/tuning UI)."""
+        with self._lock:
+            if baseline_excitement is not None:
+                self._baseline = baseline_excitement
+            if allow_interruptions is not None:
+                self._allow_interruptions = allow_interruptions
+            if min_speech_gap is not None:
+                self._min_gap = min_speech_gap
+
+    # ------------------------------------------------------------------ #
     # Accessors
     # ------------------------------------------------------------------ #
     @property
