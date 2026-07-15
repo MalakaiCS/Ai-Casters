@@ -14,6 +14,7 @@ from ai_caster.auth.backend import AuthBackend
 from ai_caster.auth.events import AuthStateChanged
 from ai_caster.auth.models import Account, AuthResult, AuthSession
 from ai_caster.auth.store import SessionStore
+from ai_caster.auth.validators import validate_email, validate_login, validate_signup
 from ai_caster.core.events import EventBus
 from ai_caster.core.logging import get_logger
 
@@ -81,6 +82,10 @@ class AuthClient:
 
     def login(self, email: str, password: str) -> bool:
         """Attempt sign-in. Returns True on success and announces the new state."""
+        problem = validate_login(email, password)
+        if problem is not None:
+            self._bus.publish(AuthStateChanged(authenticated=False, detail=problem))
+            return False
         result = self._backend.login(email, password, device_id=self._device_id)
         if not result.ok or result.session is None:
             _log.info("Login rejected: %s", result.error)
@@ -96,14 +101,26 @@ class AuthClient:
         outcomes: signed in immediately (``session`` present), account created but
         **email confirmation required** (``ok`` with no ``session``), or failure
         (``ok`` false with ``error``). Announces sign-in only when a session is
-        actually established.
+        actually established. Credentials are validated client-side first so an
+        obviously-bad email/weak password fails immediately with a clear message.
         """
+        problem = validate_signup(email, password)
+        if problem is not None:
+            self._bus.publish(AuthStateChanged(authenticated=False, detail=problem))
+            return AuthResult(ok=False, error=problem)
         result = self._backend.signup(email, password, device_id=self._device_id)
         if result.ok and result.session is not None:
             self._set_session(result.session, detail="account created")
         elif not result.ok:
             self._bus.publish(AuthStateChanged(authenticated=False, detail=result.error))
         return result
+
+    def recover(self, email: str) -> AuthResult:
+        """Request a password-recovery email for ``email``."""
+        problem = validate_email(email)
+        if problem is not None:
+            return AuthResult(ok=False, error=problem)
+        return self._backend.recover(email)
 
     def refresh(self) -> bool:
         """Refresh the current session's tokens. Returns True on success."""

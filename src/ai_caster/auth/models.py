@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from ai_caster.auth.roles import Role
+
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
@@ -15,17 +17,25 @@ class Account:
     """An authenticated user account.
 
     ``tier`` is the subscription tier *name* reported by the account service; the
-    licensing client is authoritative for what that tier actually unlocks.
+    licensing client is authoritative for what that tier actually unlocks. ``role``
+    is the RBAC role name (``owner``/``founder``/``admin``/``staff``/``partner``/
+    ``user``); it defaults to ``user`` and is authoritative for in-app permissions
+    (see :mod:`ai_caster.auth.roles`).
     """
 
     user_id: str
     email: str
     display_name: str = ""
     tier: str = "free"
+    role: str = "user"
 
     @property
     def label(self) -> str:
         return self.display_name or self.email or self.user_id
+
+    @property
+    def role_enum(self) -> Role:
+        return Role.coerce(self.role)
 
 
 @dataclass(frozen=True)

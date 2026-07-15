@@ -11,11 +11,12 @@ sign-in. Both satisfy the same :class:`AuthBackend` interface, so the
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 
 from ai_caster.auth.models import Account, AuthResult, AuthSession
-from ai_caster.core.http import HttpError, post_json
+from ai_caster.core.http import HttpError, get_json, post_json
 from ai_caster.core.logging import get_logger
 
 _log = get_logger("auth.backend")
@@ -35,6 +36,40 @@ class AuthBackend(Protocol):
     def refresh(self, session: AuthSession, *, device_id: str) -> AuthResult: ...
 
     def logout(self, session: AuthSession) -> None: ...
+
+    def recover(self, email: str) -> AuthResult: ...
+
+
+class UnconfiguredAuthBackend:
+    """A backend for builds where no real account service is configured.
+
+    Accounts are Supabase-only in a shipped build. When the Supabase URL/key are
+    missing (e.g. a build made without the deployment secrets), we refuse every
+    sign-in with a clear message rather than silently accepting anything. This is
+    the safe default: no credential is ever treated as valid.
+    """
+
+    name = "unconfigured"
+
+    _MESSAGE = (
+        "Accounts aren't set up for this build. Sign-in requires the app to be "
+        "configured with its account service."
+    )
+
+    def login(self, email: str, password: str, *, device_id: str) -> AuthResult:
+        return AuthResult(ok=False, error=self._MESSAGE)
+
+    def signup(self, email: str, password: str, *, device_id: str) -> AuthResult:
+        return AuthResult(ok=False, error=self._MESSAGE)
+
+    def refresh(self, session: AuthSession, *, device_id: str) -> AuthResult:
+        return AuthResult(ok=False, error=self._MESSAGE)
+
+    def logout(self, session: AuthSession) -> None:
+        return None
+
+    def recover(self, email: str) -> AuthResult:
+        return AuthResult(ok=False, error=self._MESSAGE)
 
 
 class OfflineAuthBackend:
@@ -88,6 +123,12 @@ class OfflineAuthBackend:
 
     def logout(self, session: AuthSession) -> None:  # noqa: D401 - no server state to clear
         return None
+
+    def recover(self, email: str) -> AuthResult:
+        # Offline there is no email to send; accept so the UI flow completes.
+        if not email:
+            return AuthResult(ok=False, error="Enter your email address.")
+        return AuthResult(ok=True)
 
 
 class HttpAuthBackend:
@@ -162,6 +203,13 @@ class HttpAuthBackend:
         except HttpError:  # pragma: no cover - best effort
             pass
 
+    def recover(self, email: str) -> AuthResult:
+        try:  # pragma: no cover - needs a live server
+            post_json(f"{self._base}/auth/recover", {"email": email}, timeout=self._timeout)
+            return AuthResult(ok=True)
+        except HttpError as exc:  # pragma: no cover - network failure path
+            return AuthResult(ok=False, error=str(exc))
+
 
 class SupabaseAuthBackend:
     """Authenticates against Supabase Auth (GoTrue) over its REST API.
@@ -177,7 +225,9 @@ class SupabaseAuthBackend:
     name = "supabase"
 
     def __init__(self, url: str, anon_key: str, *, timeout: float = 8.0) -> None:
-        self._auth = url.rstrip("/") + "/auth/v1"
+        base = url.rstrip("/")
+        self._auth = base + "/auth/v1"
+        self._rest = base + "/rest/v1"
         self._anon_key = anon_key
         self._timeout = timeout
 
@@ -226,6 +276,39 @@ class SupabaseAuthBackend:
             return "Too many attempts; please wait a moment and try again."
         return f"Authentication service error ({exc.status or 'network'})."
 
+    @staticmethod
+    def _parse_role(rows: object) -> str:
+        """Pull the ``role`` string out of a PostgREST ``profiles`` response."""
+        if isinstance(rows, list) and rows and isinstance(rows[0], dict):
+            return str(rows[0].get("role") or "user")
+        if isinstance(rows, dict):  # single-object response shape
+            return str(rows.get("role") or "user")
+        return "user"
+
+    def _fetch_role(self, session: AuthSession) -> str:  # pragma: no cover - needs a server
+        """Read the signed-in user's role from the ``profiles`` table.
+
+        RLS lets a user read only their own row. Any failure (no table yet, RLS,
+        network) degrades to the default ``user`` role so sign-in still succeeds.
+        """
+        try:
+            rows = get_json(
+                f"{self._rest}/profiles?id=eq.{session.account.user_id}&select=role",
+                headers=self._headers(session.access_token),
+                timeout=self._timeout,
+            )
+        except HttpError:
+            return "user"
+        return self._parse_role(rows)
+
+    def _with_role(self, session: AuthSession) -> AuthSession:
+        """Return ``session`` with the account's role populated from the DB."""
+        role = self._fetch_role(session)
+        if role == session.account.role:
+            return session
+        account = replace(session.account, role=role)
+        return replace(session, account=account)
+
     # -- backend interface ---------------------------------------------- #
     def login(self, email: str, password: str, *, device_id: str) -> AuthResult:
         if not email or not password:
@@ -242,7 +325,7 @@ class SupabaseAuthBackend:
         session = self._session_from_token(data)
         if session is None:
             return AuthResult(ok=False, error="Invalid email or password.")
-        return AuthResult(ok=True, session=session)
+        return AuthResult(ok=True, session=self._with_role(session))
 
     def signup(self, email: str, password: str, *, device_id: str) -> AuthResult:
         if not email or not password:
@@ -258,7 +341,9 @@ class SupabaseAuthBackend:
             return AuthResult(ok=False, error=self._friendly(exc, signup=True))
         session = self._session_from_token(data)
         if session is not None:
-            return AuthResult(ok=True, session=session)  # auto-confirmed: signed in
+            # Auto-confirmed: signed in. A brand-new account is role "user" until
+            # an Owner/Admin elevates it, so no role fetch is needed here.
+            return AuthResult(ok=True, session=session)
         # No token but a user was created -> email confirmation is required.
         if data.get("id") or data.get("user"):
             return AuthResult(ok=True, session=None)
@@ -279,7 +364,7 @@ class SupabaseAuthBackend:
         refreshed = self._session_from_token(data)
         if refreshed is None:
             return AuthResult(ok=False, error="Could not refresh session.")
-        return AuthResult(ok=True, session=refreshed)
+        return AuthResult(ok=True, session=self._with_role(refreshed))
 
     def logout(self, session: AuthSession) -> None:
         try:
@@ -291,3 +376,21 @@ class SupabaseAuthBackend:
             )
         except HttpError:  # best effort — local sign-out still proceeds
             pass
+
+    def recover(self, email: str) -> AuthResult:
+        """Trigger Supabase's password-recovery email (GoTrue ``/recover``)."""
+        if not email:
+            return AuthResult(ok=False, error="Enter your email address.")
+        try:
+            post_json(
+                f"{self._auth}/recover",
+                {"email": email},
+                headers=self._headers(),
+                timeout=self._timeout,
+            )
+        except HttpError as exc:
+            # Don't reveal whether the address exists; only surface rate limits.
+            if exc.status == 429:
+                return AuthResult(ok=False, error=self._friendly(exc))
+            return AuthResult(ok=True)
+        return AuthResult(ok=True)

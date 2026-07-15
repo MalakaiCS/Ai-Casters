@@ -153,7 +153,7 @@ def test_client_signup_signs_in_offline(tmp_path: Path):
     events: list[AuthStateChanged] = []
     bus.subscribe(AuthStateChanged, events.append)
     client = _client(tmp_path, bus)
-    result = client.signup("fresh@example.com", "pw")
+    result = client.signup("fresh@example.com", "password123")
     assert result.ok and result.session is not None
     assert client.is_authenticated
     assert events and events[-1].authenticated
@@ -171,6 +171,6 @@ class _ConfirmBackend(OfflineAuthBackend):
 def test_client_signup_confirmation_required_does_not_sign_in(tmp_path: Path):
     bus = EventBus()
     client = AuthClient(bus, _ConfirmBackend(), device_id=DEVICE)
-    result = client.signup("fresh@example.com", "pw")
+    result = client.signup("fresh@example.com", "password123")
     assert result.ok and result.session is None
     assert not client.is_authenticated  # must wait for email confirmation

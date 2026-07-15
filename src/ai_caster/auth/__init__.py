@@ -13,11 +13,22 @@ from ai_caster.auth.backend import (
     HttpAuthBackend,
     OfflineAuthBackend,
     SupabaseAuthBackend,
+    UnconfiguredAuthBackend,
 )
 from ai_caster.auth.client import AuthClient
 from ai_caster.auth.events import AuthStateChanged
 from ai_caster.auth.factory import create_auth_backend
 from ai_caster.auth.models import Account, AuthResult, AuthSession
+from ai_caster.auth.roles import (
+    DEFAULT_ROLE,
+    Role,
+    assignable_roles,
+    at_least,
+    can_assign,
+    can_manage_roles,
+    can_train,
+    rank,
+)
 from ai_caster.auth.store import SessionStore
 
 __all__ = [
@@ -25,6 +36,7 @@ __all__ = [
     "OfflineAuthBackend",
     "HttpAuthBackend",
     "SupabaseAuthBackend",
+    "UnconfiguredAuthBackend",
     "create_auth_backend",
     "AuthClient",
     "AuthStateChanged",
@@ -32,4 +44,12 @@ __all__ = [
     "AuthSession",
     "AuthResult",
     "SessionStore",
+    "Role",
+    "DEFAULT_ROLE",
+    "rank",
+    "at_least",
+    "can_train",
+    "can_manage_roles",
+    "assignable_roles",
+    "can_assign",
 ]

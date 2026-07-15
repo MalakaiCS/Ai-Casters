@@ -11,6 +11,7 @@ from ai_caster.auth.backend import (
     HttpAuthBackend,
     OfflineAuthBackend,
     SupabaseAuthBackend,
+    UnconfiguredAuthBackend,
 )
 from ai_caster.auth.factory import create_auth_backend
 from ai_caster.config.models import AccountProvider, AccountSettings
@@ -85,18 +86,49 @@ def test_session_from_token_builds_session():
     assert session.account.tier == "pro"
 
 
+def _fake_role(role="user"):
+    """A fake core.http.get_json returning a PostgREST profiles row."""
+
+    def _get(url, *, headers=None, timeout=8.0):
+        return [{"role": role}]
+
+    return _get
+
+
 # --- login ----------------------------------------------------------------- #
 def test_login_success(monkeypatch):
     fake = _FakeTransport({"access_token": "at", "refresh_token": "rt", "user": _USER})
     monkeypatch.setattr(backend_mod, "post_json", fake)
+    monkeypatch.setattr(backend_mod, "get_json", _fake_role("staff"))
     result = _backend().login("caster@example.com", "pw", device_id=DEVICE)
     assert result.ok and result.session is not None
     assert result.session.account.email == "caster@example.com"
+    # The role is pulled from the profiles table and applied to the account.
+    assert result.session.account.role == "staff"
     # Hit the password-grant endpoint with the anon apikey.
     url, payload, headers = fake.calls[0]
     assert url.endswith("/auth/v1/token?grant_type=password")
     assert payload == {"email": "caster@example.com", "password": "pw"}
     assert headers["apikey"] == KEY
+
+
+def test_login_role_defaults_to_user_when_profile_unavailable(monkeypatch):
+    fake = _FakeTransport({"access_token": "at", "refresh_token": "rt", "user": _USER})
+    monkeypatch.setattr(backend_mod, "post_json", fake)
+
+    def _boom(url, *, headers=None, timeout=8.0):
+        raise HttpError("no profiles table", status=404)
+
+    monkeypatch.setattr(backend_mod, "get_json", _boom)
+    result = _backend().login("caster@example.com", "pw", device_id=DEVICE)
+    assert result.ok and result.session.account.role == "user"
+
+
+def test_parse_role_handles_shapes():
+    assert SupabaseAuthBackend._parse_role([{"role": "admin"}]) == "admin"
+    assert SupabaseAuthBackend._parse_role({"role": "owner"}) == "owner"
+    assert SupabaseAuthBackend._parse_role([]) == "user"
+    assert SupabaseAuthBackend._parse_role(None) == "user"
 
 
 def test_login_rejects_empty_credentials():
@@ -140,6 +172,7 @@ def test_signup_existing_email_is_friendly(monkeypatch):
 def test_refresh_success(monkeypatch):
     fake = _FakeTransport({"access_token": "at2", "refresh_token": "rt2", "user": _USER})
     monkeypatch.setattr(backend_mod, "post_json", fake)
+    monkeypatch.setattr(backend_mod, "get_json", _fake_role("user"))
     from ai_caster.auth.models import Account, AuthSession
 
     session = AuthSession(
@@ -169,9 +202,10 @@ def test_factory_selects_supabase_when_configured():
     assert isinstance(create_auth_backend(settings), SupabaseAuthBackend)
 
 
-def test_factory_falls_back_when_supabase_incomplete():
+def test_factory_disables_signin_when_supabase_incomplete():
+    # Supabase-only: an unconfigured Supabase build refuses sign-in (never offline).
     settings = AccountSettings(provider=AccountProvider.SUPABASE)  # no url/key
-    assert isinstance(create_auth_backend(settings), OfflineAuthBackend)
+    assert isinstance(create_auth_backend(settings), UnconfiguredAuthBackend)
 
 
 def test_factory_http_and_offline():
@@ -179,4 +213,11 @@ def test_factory_http_and_offline():
         create_auth_backend(AccountSettings(provider=AccountProvider.HTTP, server_url="https://x")),
         HttpAuthBackend,
     )
+    # A non-frozen dev/test process still gets the offline backend by default.
     assert isinstance(create_auth_backend(AccountSettings()), OfflineAuthBackend)
+
+
+def test_factory_disables_signin_in_frozen_build_without_config(monkeypatch):
+    # A packaged build with no account service must never accept anything.
+    monkeypatch.setattr("ai_caster.auth.factory.sys.frozen", True, raising=False)
+    assert isinstance(create_auth_backend(AccountSettings()), UnconfiguredAuthBackend)
