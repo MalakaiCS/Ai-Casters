@@ -4,7 +4,7 @@ The public version/brand strings are exposed here so tooling, the desktop UI, th
 auto-updater (M8) and diagnostics can read a single source of truth.
 """
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 __app_name__ = "AI Esports Caster"
 __brand__ = "AI Casters"
 __tagline__ = "Commentary. Intelligence. Immersion."
