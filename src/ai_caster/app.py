@@ -25,6 +25,7 @@ from ai_caster.capture.pipeline import CapturePipeline
 from ai_caster.capture.uploader import create_uploader
 from ai_caster.commentary.factory import create_provider
 from ai_caster.commentary.generator import CommentaryGenerator
+from ai_caster.config.deploy import deploy_overrides
 from ai_caster.config.manager import SettingsManager
 from ai_caster.config.models import AppSettings
 from ai_caster.core.events import EventBus, GSIConnectionChanged
@@ -215,11 +216,12 @@ class Application:
             offline_cache_days=settings.licensing.offline_cache_days,
         )
 
-        update_backend = (
-            HttpUpdateBackend(settings.updater.manifest_url)
-            if settings.updater.manifest_url
-            else NullUpdateBackend()
+        # Fall back to the build-baked manifest URL when the user's settings file
+        # predates it (an upgrade over an older install), so updates keep working.
+        manifest_url = settings.updater.manifest_url or deploy_overrides().get("updater", {}).get(
+            "manifest_url", ""
         )
+        update_backend = HttpUpdateBackend(manifest_url) if manifest_url else NullUpdateBackend()
         self.updater = AutoUpdater(
             self.event_bus,
             update_backend,

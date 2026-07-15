@@ -8,6 +8,10 @@ onto the Qt thread.
 
 from __future__ import annotations
 
+import threading
+
+from PySide6.QtCore import QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
@@ -27,11 +31,15 @@ from ai_caster.updater.updater import AutoUpdater
 class AccountView(QWidget):
     """Login, subscription/entitlements, devices and update status."""
 
+    # Emitted from the update-check worker thread; delivered on the Qt thread.
+    _update_result = Signal(object)  # -> UpdateCheck | Exception
+
     def __init__(self, auth: AuthClient, licensing: LicensingClient, updater: AutoUpdater) -> None:
         super().__init__()
         self._auth = auth
         self._licensing = licensing
         self._updater = updater
+        self._pending_update = None
 
         root = QVBoxLayout(self)
         title = QLabel("Account, License & Updates")
@@ -43,6 +51,7 @@ class AccountView(QWidget):
         root.addWidget(self._build_update_box())
         root.addStretch(1)
 
+        self._update_result.connect(self._apply_update_result)
         self._refresh_account()
         self._refresh_license()
 
@@ -94,10 +103,19 @@ class AccountView(QWidget):
         layout = QVBoxLayout(box)
         self._update_label = QLabel(f"Current version {self._updater.current_version}.")
         self._update_label.setWordWrap(True)
-        check = QPushButton("Check for updates")
-        check.clicked.connect(self._on_check_updates)
+
+        buttons = QHBoxLayout()
+        self._check_btn = QPushButton("Check for updates")
+        self._check_btn.clicked.connect(self._on_check_updates)
+        self._download_btn = QPushButton("Download update")
+        self._download_btn.clicked.connect(self._on_download)
+        self._download_btn.setVisible(False)
+        buttons.addWidget(self._check_btn)
+        buttons.addWidget(self._download_btn)
+        buttons.addStretch(1)
+
         layout.addWidget(self._update_label)
-        layout.addWidget(check)
+        layout.addLayout(buttons)
         return box
 
     # ------------------------------------------------------------------ #
@@ -122,13 +140,24 @@ class AccountView(QWidget):
         self._licensing.clear()
 
     def _on_check_updates(self) -> None:
-        check = self._updater.check()
-        if check.available and check.update is not None:
-            self._update_label.setText(
-                f"Update available: {check.update.version} (current {check.current})."
-            )
-        else:
-            self._update_label.setText(f"Up to date (version {check.current}).")
+        # Give immediate feedback and run the (network) check off the UI thread so
+        # the window never freezes; the result comes back via _update_result.
+        self._check_btn.setEnabled(False)
+        self._download_btn.setVisible(False)
+        self._update_label.setText("Checking for updates…")
+        threading.Thread(target=self._run_update_check, name="update-check", daemon=True).start()
+
+    def _run_update_check(self) -> None:
+        try:
+            result = self._updater.check()
+        except Exception as exc:  # noqa: BLE001 - report failure instead of dying silently
+            result = exc
+        self._update_result.emit(result)
+
+    def _on_download(self) -> None:
+        if self._pending_update is None or not self._pending_update.url:
+            return
+        QDesktopServices.openUrl(QUrl(self._pending_update.url))
 
     # ------------------------------------------------------------------ #
     # Refresh helpers
@@ -167,6 +196,31 @@ class AccountView(QWidget):
     def on_license_state(self, status: str, tier: str, offline: bool) -> None:
         self._refresh_license()
 
+    def _apply_update_result(self, result) -> None:  # noqa: ANN001 - UpdateCheck | Exception
+        """Render the outcome of a manual check (runs on the Qt thread)."""
+        self._check_btn.setEnabled(True)
+        if isinstance(result, Exception):
+            self._update_label.setText("Update check failed — please try again.")
+            return
+        if result.available and result.update is not None:
+            self._pending_update = result.update
+            self._update_label.setText(
+                f"Update available: {result.update.version} (you have {result.current})."
+            )
+            self._download_btn.setVisible(True)
+            return
+        if result.latest is None:
+            # Nothing came back: either no source is configured, or it was unreachable.
+            if self._updater.updates_configured:
+                self._update_label.setText("Couldn't reach the update server — try again later.")
+            else:
+                self._update_label.setText("Automatic updates aren't set up for this build.")
+            return
+        self._update_label.setText(f"You're on the latest version ({result.current}).")
+
     def on_update_available(self, info, current: str, latest: str, mandatory: bool) -> None:  # noqa: ANN001
+        # Fired by the startup auto-check (via the event bridge).
+        self._pending_update = info
         tag = "  (required)" if mandatory else ""
-        self._update_label.setText(f"Update available: {latest} (current {current}){tag}.")
+        self._update_label.setText(f"Update available: {latest} (you have {current}){tag}.")
+        self._download_btn.setVisible(True)

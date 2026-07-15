@@ -49,6 +49,11 @@ class AutoUpdater:
         return self._current
 
     @property
+    def updates_configured(self) -> bool:
+        """Whether a real update source is configured (not the offline null one)."""
+        return getattr(self._backend, "name", "") != "null"
+
+    @property
     def available_update(self) -> UpdateInfo | None:
         with self._lock:
             return self._latest

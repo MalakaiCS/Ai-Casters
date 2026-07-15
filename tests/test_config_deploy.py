@@ -66,6 +66,22 @@ def test_bundled_updater_manifest_is_applied(monkeypatch):
     assert merged.updater.auto_check is True
 
 
+def test_updater_uses_baked_manifest_when_settings_empty(monkeypatch):
+    # An upgraded install has settings.json without a manifest_url; the app should
+    # fall back to the build-baked deploy default so updates still work.
+    from ai_caster.app import Application
+
+    monkeypatch.delenv(_ENV_URL, raising=False)
+    monkeypatch.delenv(_ENV_KEY, raising=False)
+    monkeypatch.setattr(
+        deploy_mod,
+        "_load_bundled",
+        lambda: {"updater": {"manifest_url": "https://example.com/manifest.json"}},
+    )
+    app = Application()
+    assert app.updater.updates_configured  # HttpUpdateBackend, not the null one
+
+
 def test_existing_settings_are_not_overridden(monkeypatch, tmp_path: Path):
     # Write a user file that stays offline.
     path = tmp_path / "settings.json"

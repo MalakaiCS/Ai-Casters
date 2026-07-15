@@ -61,6 +61,13 @@ def test_null_backend_reports_no_update():
     assert check.detail == "no manifest"
 
 
+def test_updates_configured_reflects_backend():
+    bus = EventBus()
+    assert not _updater(bus, NullUpdateBackend()).updates_configured
+    info = UpdateInfo(version=Version.parse("0.2.0"))
+    assert _updater(bus, _StubBackend(info)).updates_configured
+
+
 def test_check_reports_available_and_publishes():
     bus = EventBus()
     events: list[UpdateAvailable] = []
