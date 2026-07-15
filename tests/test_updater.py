@@ -121,4 +121,6 @@ def test_download_and_install_requires_a_directory():
     bus = EventBus()
     updater = _updater(bus, NullUpdateBackend())  # no cache_dir -> download() raises
     with pytest.raises(ValueError):
-        updater.download_and_install(UpdateInfo(version=Version.parse("0.2.0"), url="http://x/a.bin"))
+        updater.download_and_install(
+            UpdateInfo(version=Version.parse("0.2.0"), url="http://x/a.bin")
+        )
