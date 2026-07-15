@@ -84,6 +84,14 @@ class VoiceChannel:
     def set_muted(self, muted: bool) -> None:
         self._dsp.muted = muted
 
+    def set_voice_id(self, voice_id: str) -> None:
+        """Change the TTS voice used for subsequent lines (applies live)."""
+        self._voice_id = voice_id
+
+    @property
+    def voice_id(self) -> str:
+        return self._voice_id
+
     # ------------------------------------------------------------------ #
     def start(self) -> None:
         if self.is_running:
