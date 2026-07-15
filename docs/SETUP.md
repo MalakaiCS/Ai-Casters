@@ -185,13 +185,24 @@ monitor mix.
 
 ---
 
-## 10. Account, licensing & updates
+## 10. Accounts, roles, licensing & updates
 
-- **Account & License** view: **Create account** / **Sign in**, see your tier and
-  entitlements, and manage devices. By default the backend authenticates locally
-  and offline. To use **Supabase** for real login/sign-up, set
-  **Settings → Account** `provider = supabase` with your project URL + anon key —
-  see [`SUPABASE.md`](SUPABASE.md).
+- **Sign-in is required.** On launch the app shows a boot window — **sign in**,
+  **create an account**, or **forgot password** — and only opens once you have a
+  real session (a saved session is restored automatically). Distributed builds are
+  **Supabase-only**: a build without a configured account service refuses sign-in
+  rather than accepting anything, so you must ship it with Supabase configured
+  (bake the `SUPABASE_URL`/`SUPABASE_ANON_KEY` secrets — see [`SUPABASE.md`](SUPABASE.md)).
+  For local development (running from source, not a packaged build) an offline
+  backend is used so you can sign in with any valid email + password.
+- **Roles.** Every user has a role — **Owner, Founder, Admin, Staff, Partner** or
+  **User** (the default). Roles gate features: **Staff and above** can open
+  **Train the AI**; **Admin and above** can open **Team & Roles** to promote or
+  demote others (a manager can only assign roles below their own). Roles live in
+  Supabase; set your first **Owner** once via SQL, then manage everyone in-app —
+  see [`SUPABASE.md` §5c](SUPABASE.md).
+- **Account & License** view: see your tier and entitlements, manage devices, and
+  sign out.
 - Subscription tiers gate features (e.g. cloud sync is Studio-tier). Licensing has
   an offline grace cache so an unreachable service won't interrupt a broadcast.
   **No payment processing** is included.
@@ -215,11 +226,21 @@ and drop rate, vision throughput, voice queue depth, CPU/memory (accurate with t
 
 ---
 
-## 12. Offline training pipeline (separate tool)
+## 12. Training the AI (in-app for Staff+, or the CLI)
 
-A standalone, offline tool that learns **general** pacing/vocabulary from
-**authorized transcripts**. It never touches audio, never models an identifiable
-person, and is not part of the live engine.
+The app learns **general** pacing/vocabulary from **authorized** sources. It never
+clones a voice, never models an identifiable person, and only ever *suggests*
+settings for review.
+
+**In the app (Staff and above):** open **Train the AI**. Add authorized transcript
+folders and/or recordings you own (with a consent reference), click **Analyze**,
+and review the learned style. The **Tone & pacing** panel sets baseline excitement,
+the minimum gap between lines (when to hold back) and whether the play-by-play may
+interrupt — these apply to the live director as soon as you save. Transcribing
+recordings in-app needs the `training` extra (`faster-whisper`); transcript-folder
+training and the tone/pacing controls need nothing extra.
+
+**From the CLI (any environment):**
 
 ```bash
 ai-caster train ./transcripts --out style-profile.json
