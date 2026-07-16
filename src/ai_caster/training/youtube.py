@@ -52,19 +52,60 @@ def extract_video_id(url_or_id: str) -> str:
     return vid
 
 
-def _fetch_raw(api_cls, video_id: str, languages: list[str]) -> list[dict]:
-    """Fetch caption rows, tolerating both youtube-transcript-api API generations.
-
-    * ``<= 0.6.x`` exposes the classmethod ``get_transcript`` returning list[dict].
-    * ``>= 1.0`` uses an instance ``fetch`` returning a ``FetchedTranscript`` (which
-      offers ``to_raw_data()`` / iterable snippets with ``.text/.start/.duration``).
-    """
-    if hasattr(api_cls, "get_transcript"):
-        return list(api_cls.get_transcript(video_id, languages=languages))
-    fetched = api_cls().fetch(video_id, languages=languages)
+def _snippets_to_raw(fetched: object) -> list[dict]:
+    """Normalize a FetchedTranscript / list into ``[{text,start,duration}, …]``."""
+    if isinstance(fetched, list):
+        return list(fetched)
     if hasattr(fetched, "to_raw_data"):
         return list(fetched.to_raw_data())
     return [{"text": snip.text, "start": snip.start, "duration": snip.duration} for snip in fetched]
+
+
+def _pick_transcript(transcript_list, languages: list[str]):
+    """Choose the best available caption track for coverage.
+
+    Prefer a manually-created track (in a requested language, else any language),
+    then any auto-generated track — so a video whose only captions are
+    auto-generated, or in another language, still yields a usable transcript
+    instead of almost nothing.
+    """
+    tracks = list(transcript_list)
+    langs = set(languages)
+
+    def is_generated(t) -> bool:
+        return bool(getattr(t, "is_generated", False))
+
+    manual = [t for t in tracks if not is_generated(t)]
+    generated = [t for t in tracks if is_generated(t)]
+    for pool in (manual, generated):
+        for track in pool:
+            if getattr(track, "language_code", None) in langs:
+                return track
+    for pool in (manual, generated, tracks):
+        if pool:
+            return pool[0]
+    raise YouTubeTranscriptError("This video has no captions available.")
+
+
+def _fetch_raw(api_cls, video_id: str, languages: list[str]) -> list[dict]:
+    """Fetch caption rows, tolerating both youtube-transcript-api API generations
+    and falling back to auto-generated / other-language tracks for coverage.
+
+    * ``<= 0.6.x`` exposes classmethods ``get_transcript`` / ``list_transcripts``.
+    * ``>= 1.0`` uses instance ``fetch`` / ``list`` returning a FetchedTranscript.
+    """
+    if hasattr(api_cls, "get_transcript"):  # 0.6.x
+        try:
+            return list(api_cls.get_transcript(video_id, languages=languages))
+        except Exception:  # noqa: BLE001 - fall back to any available track
+            listing = api_cls.list_transcripts(video_id)
+            return _snippets_to_raw(_pick_transcript(listing, languages).fetch())
+    api = api_cls()  # 1.x
+    try:
+        return _snippets_to_raw(api.fetch(video_id, languages=languages))
+    except Exception:  # noqa: BLE001 - fall back to any available track
+        listing = api.list(video_id)
+        return _snippets_to_raw(_pick_transcript(listing, languages).fetch())
 
 
 def _to_segments(raw: list[dict]) -> list[TranscriptSegment]:

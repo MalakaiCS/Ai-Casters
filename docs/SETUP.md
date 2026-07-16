@@ -245,7 +245,15 @@ training and the tone/pacing controls need nothing extra.
 > transcript (text + timing) — it never downloads audio/video and never captures a
 > voice, so the "no voice cloning" guarantee holds. You must own the content or be
 > licensed to use it (your own channel, or Creative-Commons material); the app asks
-> you to confirm this before adding a link.
+> you to confirm this before adding a link. Coverage depends entirely on the video's
+> captions — a video with sparse or no captions yields little text; **local
+> recordings + Whisper give far better coverage** for long material.
+
+**Share it with everyone — the team hub.** After analyzing, click **Publish to
+team hub** to push the trained style to a shared table (Supabase, Staff+ only).
+**Every app pulls the latest published style on launch** and casts with it by
+default — so anyone on the account is productive immediately without training
+anything themselves. See [`SUPABASE.md` §5d](SUPABASE.md) for the one-time SQL.
 
 **From the CLI (any environment):**
 

@@ -56,6 +56,7 @@ from ai_caster.replay.server import ReplayServer
 from ai_caster.statistics.engine import StatisticsEngine
 from ai_caster.sync.client import SettingsSyncClient
 from ai_caster.sync.factory import create_sync_backend
+from ai_caster.training.hub import create_style_hub
 from ai_caster.updater.backend import HttpUpdateBackend, NullUpdateBackend
 from ai_caster.updater.updater import AutoUpdater
 from ai_caster.vision.factory import create_vision_pipeline
@@ -220,6 +221,9 @@ class Application:
         # Team roster / role management (Admin+); no-op unless Supabase-backed.
         self.team = create_team_client(account)
 
+        # Shared style hub: Staff publish a trained style, everyone pulls it.
+        self.style_hub = create_style_hub(account)
+
         self.licensing = LicensingClient(
             self.event_bus,
             create_licensing_backend(settings.licensing, account),
@@ -357,6 +361,33 @@ class Application:
                 self.updater.check()
             except Exception:  # noqa: BLE001 - update check is best-effort
                 self._log.exception("Update check failed")
+
+        self._apply_shared_style(token)
+
+    def _apply_shared_style(self, token: str) -> None:
+        """Pull the team's shared style profile and apply its pacing live.
+
+        This is what lets any signed-in user cast with the trained style straight
+        away, without training anything themselves. It only nudges the live
+        director's pacing (never persisted over the user's own settings), so a
+        missing hub or a failure just leaves the local defaults in place.
+        """
+        if not getattr(self.style_hub, "supported", False):
+            return
+        try:
+            shared = self.style_hub.fetch_latest(token=token)
+        except Exception:  # noqa: BLE001 - the hub is best-effort
+            self._log.exception("Fetching shared style failed")
+            return
+        if shared is None:
+            return
+        from ai_caster.training.pipeline import TrainingPipeline
+
+        suggested = TrainingPipeline.suggested_director_settings(shared.profile)
+        gap_ms = suggested.get("min_speech_gap_ms")
+        if gap_ms:
+            self.director.configure(min_speech_gap=gap_ms / 1000.0)
+            self._log.info("Applied shared style: min speech gap %d ms", gap_ms)
 
     def stop_services(self) -> None:
         """Stop all background services and release resources."""

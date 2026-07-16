@@ -44,11 +44,13 @@ class TrainingView(QWidget):
     """Teach the AI general style from authorized sources, and tune tone/pacing."""
 
     _analysis_done = Signal(object)  # -> (summary:str, suggested:dict) | Exception
+    _publish_done = Signal(object)  # -> str (message)
 
-    def __init__(self, auth: AuthClient, settings_manager: SettingsManager) -> None:
+    def __init__(self, auth: AuthClient, settings_manager: SettingsManager, style_hub=None) -> None:  # noqa: ANN001
         super().__init__()
         self._auth = auth
         self._settings = settings_manager
+        self._hub = style_hub
         self._dirs: list[str] = []
         self._media: list[str] = []
         self._youtube: list[str] = []
@@ -85,6 +87,7 @@ class TrainingView(QWidget):
         root.addStretch(0)
 
         self._analysis_done.connect(self._on_analysis_done)
+        self._publish_done.connect(self._on_publish_done)
         self._load_tuning()
         self._apply_gate()
 
@@ -131,8 +134,15 @@ class TrainingView(QWidget):
         self._save_profile_btn = QPushButton("Save style profile…")
         self._save_profile_btn.clicked.connect(self._save_profile)
         self._save_profile_btn.setEnabled(False)
+        self._publish_btn = QPushButton("Publish to team hub")
+        self._publish_btn.setToolTip(
+            "Share this trained style with everyone — all apps pull it on launch."
+        )
+        self._publish_btn.clicked.connect(self._on_publish)
+        self._publish_btn.setEnabled(False)
         row.addWidget(self._analyze_btn)
         row.addWidget(self._save_profile_btn)
+        row.addWidget(self._publish_btn)
         row.addStretch(1)
         layout.addLayout(row)
 
@@ -317,6 +327,7 @@ class TrainingView(QWidget):
             self._results.setPlainText(f"Couldn't complete analysis:\n{result}")
             self._save_profile_btn.setEnabled(False)
             self._apply_suggested.setEnabled(False)
+            self._publish_btn.setEnabled(False)
             return
         summary, suggested = result
         self._suggested = suggested
@@ -326,6 +337,7 @@ class TrainingView(QWidget):
         )
         self._save_profile_btn.setEnabled(True)
         self._apply_suggested.setEnabled(gap is not None)
+        self._publish_btn.setEnabled(bool(getattr(self._hub, "supported", False)))
 
     def _save_profile(self) -> None:
         if self._last_profile is None:
@@ -339,6 +351,47 @@ class TrainingView(QWidget):
 
         TrainingPipeline.save_profile(self._last_profile, Path(path))
         self._results.appendPlainText(f"\nSaved profile to {path}")
+
+    # -- publish to the shared hub -------------------------------------- #
+    def _on_publish(self) -> None:
+        if self._last_profile is None or not getattr(self._hub, "supported", False):
+            return
+        confirm = QMessageBox.question(
+            self,
+            "Publish to team hub",
+            "Share this trained style with everyone? All apps pull the latest "
+            "published style on launch and cast with it by default.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        self._publish_btn.setEnabled(False)
+        self._results.appendPlainText("\nPublishing to the team hub…")
+        from ai_caster.training.pipeline import TrainingPipeline
+
+        summary = TrainingPipeline.summary(self._last_profile).splitlines()[0]
+        token = self._auth.session.access_token if self._auth.session else ""
+        profile = self._last_profile
+        threading.Thread(
+            target=self._run_publish,
+            args=(profile, summary, token),
+            name="train-publish",
+            daemon=True,
+        ).start()
+
+    def _run_publish(self, profile, summary: str, token: str) -> None:  # noqa: ANN001
+        result = self._hub.publish(profile, summary, token=token)
+        self._publish_done.emit(result.error if not result.ok else "")
+
+    def _on_publish_done(self, error: str) -> None:
+        self._publish_btn.setEnabled(True)
+        if error:
+            self._results.appendPlainText(f"Publish failed: {error}")
+            return
+        self._results.appendPlainText(
+            "Published. Everyone will pull this style on their next launch."
+        )
 
     # ------------------------------------------------------------------ #
     # Tone & pacing

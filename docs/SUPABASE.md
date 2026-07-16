@@ -284,6 +284,47 @@ else — no more SQL needed.
 
 ---
 
+## 5d. Shared style hub (train once, everyone casts with it)
+
+Staff train the AI and **publish** the learned style profile to a shared table;
+every app **pulls the latest one on launch** and casts with it by default, so any
+user is productive immediately. Everyone signed in can read the latest profile;
+only **Staff and above** can publish.
+
+```sql
+create table if not exists public.style_hub (
+  id uuid primary key default gen_random_uuid(),
+  profile jsonb not null,
+  summary text,
+  published_by uuid default auth.uid() references auth.users (id),
+  published_at timestamptz not null default now()
+);
+alter table public.style_hub enable row level security;
+
+-- Anyone signed in can read (clients fetch the newest row).
+create policy "style hub is readable by all signed-in users"
+  on public.style_hub for select using (auth.role() = 'authenticated');
+
+-- Only Staff and above may publish. is_trainer() is SECURITY DEFINER so it can
+-- read the caller's role without tripping RLS.
+create or replace function public.is_trainer()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role in ('owner','founder','admin','staff')
+  );
+$$;
+
+create policy "only trainers can publish a style"
+  on public.style_hub for insert with check (public.is_trainer());
+```
+
+In the app: **Train the AI** → analyze sources → **Publish to team hub**. Every
+other user picks it up on their next launch (it nudges the live pacing; it never
+overwrites their own saved settings).
+
+---
+
 ## 6. Ship a pre-configured build (recommended for distribution)
 
 So end users don't have to paste anything, the installer can be **baked** with your

@@ -11,6 +11,7 @@ from ai_caster.training.pipeline import TrainingPipeline
 from ai_caster.training.youtube import (
     YouTubeTranscriptError,
     _fetch_raw,
+    _pick_transcript,
     _to_segments,
     extract_video_id,
 )
@@ -94,6 +95,50 @@ class _NewApiIterable:
 def test_fetch_raw_handles_both_api_generations(api_cls):
     raw = _fetch_raw(api_cls, "vid", ["en"])
     assert raw == _RAW
+
+
+class _Track:
+    def __init__(self, language_code, is_generated):
+        self.language_code = language_code
+        self.is_generated = is_generated
+
+    def fetch(self):
+        return [
+            {"text": f"{self.language_code}/{self.is_generated}", "start": 0.0, "duration": 1.0}
+        ]
+
+
+def test_pick_transcript_prefers_manual_in_requested_language():
+    tracks = [
+        _Track("es", False),
+        _Track("en", True),  # generated en
+        _Track("en", False),  # manual en <- preferred
+    ]
+    assert _pick_transcript(tracks, ["en"]).language_code == "en"
+    assert _pick_transcript(tracks, ["en"]).is_generated is False
+
+
+def test_pick_transcript_falls_back_to_generated_then_any():
+    # Only a generated track in another language: still usable.
+    only_generated = [_Track("de", True)]
+    assert _pick_transcript(only_generated, ["en"]).language_code == "de"
+    with pytest.raises(YouTubeTranscriptError):
+        _pick_transcript([], ["en"])
+
+
+class _ApiWithFallback:
+    """1.x api whose direct fetch fails, forcing the list() fallback path."""
+
+    def fetch(self, video_id, languages=None):
+        raise RuntimeError("no transcript in requested languages")
+
+    def list(self, video_id):
+        return [_Track("en", True)]  # an auto-generated track exists
+
+
+def test_fetch_raw_falls_back_to_listed_track():
+    raw = _fetch_raw(_ApiWithFallback, "vid", ["en"])
+    assert raw == [{"text": "en/True", "start": 0.0, "duration": 1.0}]
 
 
 def test_pipeline_add_youtube_authorized(monkeypatch):

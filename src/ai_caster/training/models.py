@@ -104,6 +104,40 @@ class StyleProfile:
     vocabulary: VocabularyProfile = field(default_factory=VocabularyProfile)
     generated_at: datetime = field(default_factory=_utcnow)
 
+    @classmethod
+    def from_dict(cls, data: dict) -> StyleProfile:
+        """Reconstruct a profile from :meth:`to_dict` output (for the shared hub)."""
+        pacing_raw = data.get("pacing") or {}
+        vocab_raw = data.get("vocabulary") or {}
+        generated = data.get("generated_at")
+        try:
+            generated_at = datetime.fromisoformat(generated) if generated else _utcnow()
+        except (TypeError, ValueError):
+            generated_at = _utcnow()
+        return cls(
+            num_sources=int(data.get("num_sources", 0)),
+            total_segments=int(data.get("total_segments", 0)),
+            language=str(data.get("language", "en")),
+            pacing=PacingProfile(
+                segments_analyzed=int(pacing_raw.get("segments_analyzed", 0)),
+                avg_words_per_line=float(pacing_raw.get("avg_words_per_line", 0.0)),
+                avg_line_duration=float(pacing_raw.get("avg_line_duration", 0.0)),
+                median_line_duration=float(pacing_raw.get("median_line_duration", 0.0)),
+                avg_gap_seconds=float(pacing_raw.get("avg_gap_seconds", 0.0)),
+                words_per_second=float(pacing_raw.get("words_per_second", 0.0)),
+                lines_per_minute=float(pacing_raw.get("lines_per_minute", 0.0)),
+            ),
+            vocabulary=VocabularyProfile(
+                tokens_analyzed=int(vocab_raw.get("tokens_analyzed", 0)),
+                unique_tokens=int(vocab_raw.get("unique_tokens", 0)),
+                type_token_ratio=float(vocab_raw.get("type_token_ratio", 0.0)),
+                filler_ratio=float(vocab_raw.get("filler_ratio", 0.0)),
+                top_terms=[tuple(t) for t in vocab_raw.get("top_terms", [])],
+                top_bigrams=[tuple(b) for b in vocab_raw.get("top_bigrams", [])],
+            ),
+            generated_at=generated_at,
+        )
+
     def to_dict(self) -> dict:
         return {
             "kind": "ai_caster.style_profile",

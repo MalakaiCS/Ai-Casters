@@ -107,7 +107,9 @@ class MainWindow(QMainWindow):
             application.auth, application.licensing, application.updater
         )
         self._team_view = TeamView(application.auth, application.team)
-        self._training_view = TrainingView(application.auth, application.settings_manager)
+        self._training_view = TrainingView(
+            application.auth, application.settings_manager, application.style_hub
+        )
         self._diagnostics_view = DiagnosticsView(
             application.paths.log_dir if application.settings.logging.log_to_file else None,
             log_tail_lines=application.settings.diagnostics.log_tail_lines,
