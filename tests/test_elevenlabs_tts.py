@@ -72,6 +72,59 @@ def test_synthesize_empty_text_is_silence():
     assert clip.samples.size == 0
 
 
+# --- graceful fallback ----------------------------------------------------- #
+from ai_caster.voice.tts.elevenlabs import _TTSRequestError  # noqa: E402
+
+
+def test_payment_required_falls_back_to_synthetic_audio(monkeypatch):
+    """402 (out of credits) must produce audio, not raise or go silent."""
+    engine = _engine()
+
+    def boom(url, headers, body):
+        raise _TTSRequestError("HTTP Error 402: Payment Required", status=402)
+
+    monkeypatch.setattr(engine, "_post_audio", boom)
+    clip = engine.synthesize("Insane clutch!", "voiceB")
+    # Real audio came back from the offline fallback engine.
+    assert clip.samples.size > 0
+    assert clip.sample_rate == engine.sample_rate
+
+
+def test_permanent_failure_degrades_for_the_session(monkeypatch):
+    """After a 402 the engine stops calling the cloud and stays on synthetic."""
+    engine = _engine()
+    calls = {"n": 0}
+
+    def boom(url, headers, body):
+        calls["n"] += 1
+        raise _TTSRequestError("HTTP Error 402: Payment Required", status=402)
+
+    monkeypatch.setattr(engine, "_post_audio", boom)
+    engine.synthesize("first", "v")
+    engine.synthesize("second", "v")
+    engine.synthesize("third", "v")
+    # Only the first line actually hit the network; the rest short-circuited.
+    assert calls["n"] == 1
+    assert engine._degraded is True
+
+
+def test_transient_network_error_retries_next_line(monkeypatch):
+    """A one-off network blip falls back but keeps trying the cloud."""
+    engine = _engine()
+    calls = {"n": 0}
+
+    def flaky(url, headers, body):
+        calls["n"] += 1
+        raise _TTSRequestError("connection reset", status=None)
+
+    monkeypatch.setattr(engine, "_post_audio", flaky)
+    engine.synthesize("one", "v")
+    engine.synthesize("two", "v")
+    # Both lines attempted the network — not permanently degraded.
+    assert calls["n"] == 2
+    assert engine._degraded is False
+
+
 # --- factory --------------------------------------------------------------- #
 def test_factory_selects_elevenlabs_with_key():
     settings = VoiceSettings(tts_engine="elevenlabs", elevenlabs_api_key=KEY)

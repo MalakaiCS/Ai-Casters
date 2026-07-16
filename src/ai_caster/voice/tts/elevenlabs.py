@@ -16,12 +16,26 @@ import numpy as np
 
 from ai_caster.core.logging import get_logger
 from ai_caster.voice.audio import AudioClip
+from ai_caster.voice.tts.synthetic import SyntheticTTS
 
 _log = get_logger("voice.tts.elevenlabs")
 
+# HTTP statuses that mean "this key/account can't synthesize right now" — out of
+# credits (402), unauthorized/bad key (401), forbidden (403). Retrying every line
+# just adds latency and log spam, so once we see one we permanently fall back to
+# the offline engine for the rest of the session (the show keeps talking).
+_PERMANENT_STATUSES = frozenset({401, 402, 403})
+
 
 class ElevenLabsTTS:
-    """Text-to-speech via the ElevenLabs API."""
+    """Text-to-speech via the ElevenLabs API.
+
+    If the API can't be reached (out of credits, bad key, network trouble) the
+    engine degrades to the offline :class:`SyntheticTTS` instead of raising, so
+    the casters never go fully silent — the same graceful-fallback contract the
+    rest of the app uses. Quota/auth failures switch to the fallback for the rest
+    of the session; a one-off network blip only affects the line that failed.
+    """
 
     name = "elevenlabs"
 
@@ -44,6 +58,10 @@ class ElevenLabsTTS:
         self._sample_rate = sample_rate if sample_rate in self._SUPPORTED_RATES else 24000
         self._default_voice = default_voice_id or self.DEFAULT_VOICE
         self._timeout = timeout
+        # Offline safety net so a failed cloud request still produces audio.
+        self._fallback = SyntheticTTS(sample_rate=self._sample_rate)
+        self._degraded = False
+        self._warned = False
 
     @property
     def sample_rate(self) -> int:
@@ -77,8 +95,31 @@ class ElevenLabsTTS:
     def synthesize(self, text: str, voice_id: str = "") -> AudioClip:
         if not text.strip():
             return AudioClip(np.zeros(0, dtype=np.float32), self._sample_rate)
-        data = self._post_audio(self._endpoint(voice_id), self._headers(), self._body(text))
+        # Already gave up on the cloud this session — stay on the offline engine.
+        if self._degraded:
+            return self._fallback.synthesize(text, voice_id)
+        try:
+            data = self._post_audio(self._endpoint(voice_id), self._headers(), self._body(text))
+        except _TTSRequestError as exc:
+            self._handle_failure(exc)
+            return self._fallback.synthesize(text, voice_id)
         return self._pcm_to_clip(data)
+
+    def _handle_failure(self, exc: _TTSRequestError) -> None:
+        """Log the cloud failure once and, for auth/quota errors, degrade for good."""
+        permanent = exc.status in _PERMANENT_STATUSES
+        if permanent:
+            self._degraded = True
+        if not self._warned:
+            self._warned = True
+            reason = _REASONS.get(exc.status, "the request failed")
+            tail = (
+                "Switching to the built-in offline voice for the rest of the session; "
+                "restore ElevenLabs by adding credits or fixing the API key, then restart."
+                if permanent
+                else "Falling back to the offline voice for this line and retrying next time."
+            )
+            _log.warning("ElevenLabs TTS unavailable (%s). %s", reason, tail)
 
     def _post_audio(self, url: str, headers: dict[str, str], body: dict) -> bytes:
         import json
@@ -93,5 +134,23 @@ class ElevenLabsTTS:
         try:  # pragma: no cover - network I/O
             with urllib.request.urlopen(request, timeout=self._timeout) as response:  # noqa: S310
                 return response.read()
+        except urllib.error.HTTPError as exc:  # pragma: no cover - network I/O
+            raise _TTSRequestError(str(exc), status=exc.code) from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:  # pragma: no cover
-            raise RuntimeError(f"ElevenLabs TTS request failed: {exc}") from exc
+            raise _TTSRequestError(str(exc), status=None) from exc
+
+
+class _TTSRequestError(RuntimeError):
+    """Raised inside the engine when a cloud request fails; carries the HTTP status."""
+
+    def __init__(self, message: str, *, status: int | None) -> None:
+        super().__init__(f"ElevenLabs TTS request failed: {message}")
+        self.status = status
+
+
+_REASONS = {
+    401: "the API key was rejected (401 Unauthorized)",
+    402: "the account is out of credits (402 Payment Required)",
+    403: "access is forbidden for this key (403)",
+    429: "the API is rate-limiting requests (429)",
+}
