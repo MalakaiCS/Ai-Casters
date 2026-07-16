@@ -56,8 +56,25 @@ def test_unknown_topic_is_safe_generic():
     assert text  # never empty, never raises
 
 
-def test_deterministic_for_same_input():
-    mock = MockProvider()
-    a = mock.generate(_req("Kill", round=2, killer="A", victim="B"))
-    b = mock.generate(_req("Kill", round=2, killer="A", victim="B"))
+def test_deterministic_across_instances_for_first_call():
+    # Two fresh providers give the same first line for the same input (call-ordered
+    # determinism), which keeps the path reproducible in tests.
+    a = MockProvider().generate(_req("Kill", round=2, killer="A", victim="B"))
+    b = MockProvider().generate(_req("Kill", round=2, killer="A", victim="B"))
     assert a == b
+
+
+def test_consecutive_same_topic_lines_do_not_repeat():
+    # The whole point of the rotation: back-to-back lines on the same topic vary,
+    # so a real broadcast doesn't hear the identical sentence every bomb plant.
+    mock = MockProvider()
+    first = mock.generate(_req("BombPlanted"))
+    second = mock.generate(_req("BombPlanted"))
+    assert first != second
+    assert "bomb" in first.lower() or "planted" in first.lower()
+
+
+def test_rotation_cycles_through_the_whole_pool():
+    mock = MockProvider()
+    seen = {mock.generate(_req("BombDefused")) for _ in range(6)}
+    assert len(seen) >= 2  # multiple distinct phrasings emerge

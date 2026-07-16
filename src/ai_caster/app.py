@@ -158,6 +158,9 @@ class Application:
             enabled=settings.downtime.enabled,
             min_delay_seconds=settings.downtime.min_delay_seconds,
             interval_seconds=settings.downtime.interval_seconds,
+            slow_round_enabled=settings.downtime.slow_round_enabled,
+            slow_round_after_seconds=settings.downtime.slow_round_after_seconds,
+            slow_round_interval_seconds=settings.downtime.slow_round_interval_seconds,
         )
 
         # --- commentary AIs (Modules 11 & 12) ----------------------------- #
@@ -467,6 +470,7 @@ class Application:
             excitement_contrast=settings.commentary.excitement_contrast,
         )
         self.downtime.set_enabled(settings.downtime.enabled)
+        self.downtime.set_slow_round_enabled(settings.downtime.slow_round_enabled)
 
     def _on_gsi_connection(self, event: GSIConnectionChanged) -> None:
         self._gsi_connected = event.connected

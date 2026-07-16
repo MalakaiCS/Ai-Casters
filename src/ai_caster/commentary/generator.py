@@ -79,6 +79,12 @@ class CommentaryGenerator:
         with self._lock:
             return list(self._recent)
 
+    def _recent_texts(self, count: int = 4) -> tuple[str, ...]:
+        """The last few spoken lines, newest first, for anti-repetition prompting."""
+        with self._lock:
+            recent = [line.text for line in self._recent if line.text]
+        return tuple(reversed(recent[-count:]))
+
     # ------------------------------------------------------------------ #
     def start(self) -> None:
         if self.is_running:
@@ -142,13 +148,15 @@ class CommentaryGenerator:
     # ------------------------------------------------------------------ #
     def generate(self, directive: CommentaryDirective) -> CommentaryLine:
         """Produce a line for ``directive`` (synchronous; used by the worker/tests)."""
+        avoid = self._recent_texts()
         request = LLMRequest(
             system=system_prompt(self._role.value, self._language),
-            user=user_prompt(directive),
+            user=user_prompt(directive, avoid),
             topic=directive.topic,
             speaker=self._role.value,
             excitement=directive.excitement,
             context=directive.context,
+            avoid=avoid,
             model=self._model,
             max_tokens=self._max_tokens,
         )

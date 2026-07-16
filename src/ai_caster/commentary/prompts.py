@@ -43,12 +43,24 @@ def system_prompt(speaker: str, language: str = "en") -> str:
     return f"{style} {_SHARED_RULES} Respond in {lang}."
 
 
-def user_prompt(directive: CommentaryDirective) -> str:
-    """Render the event facts into a compact brief for the model."""
+def user_prompt(directive: CommentaryDirective, avoid: tuple[str, ...] = ()) -> str:
+    """Render the event facts into a compact brief for the model.
+
+    ``avoid`` lists lines said recently so the model varies its wording instead
+    of repeating stock phrases — the most common complaint about auto-casters.
+    """
     facts = ", ".join(f"{k}={v}" for k, v in directive.context.items()) or "none"
-    return (
-        f"Event: {directive.topic}. "
-        f"Excitement: {directive.excitement:.2f} (0=calm, 1=maximum). "
-        f"Facts: {facts}. "
-        "Produce the single spoken line now."
-    )
+    parts = [
+        f"Event: {directive.topic}.",
+        f"Excitement: {directive.excitement:.2f} (0=calm, 1=maximum).",
+        f"Facts: {facts}.",
+    ]
+    if avoid:
+        recent = " | ".join(line.strip() for line in avoid if line.strip())
+        if recent:
+            parts.append(
+                "Do NOT repeat or lightly reword any of these recent lines; "
+                f"say something fresh: {recent}."
+            )
+    parts.append("Produce the single spoken line now.")
+    return " ".join(parts)

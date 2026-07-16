@@ -110,9 +110,14 @@ Vision augments GSI (flash/smoke/fire/kill-feed/HUD/replay-banner cues); it neve
 overrides confirmed GSI data.
 
 1. Install the `capture` extra.
-2. **Settings → Capture**: choose a source — `monitor`, `window` (title match) or
-   `capture_card` — and set the matching locator. The default `synthetic` source
-   runs anywhere for testing.
+2. **Video Capture view**: pick **Capture from** — `Monitor / screen`, `Window`
+   (title match), `Capture card` or `Synthetic` (test pattern). For a monitor,
+   choose which display from the **Monitor** dropdown (it lists your connected
+   screens with resolution; hit **Rescan** if you plug one in). Click **Apply
+   source** to save it, then **Refresh preview** to see exactly what the caster
+   will be looking at *before* you go live — no need to start a full capture to
+   check you picked the right screen. The default `synthetic` source runs anywhere
+   for testing.
 3. **Settings → Vision**: enable it and tune per-detector toggles. For the
    on-screen **REPLAY** banner detector, adjust the region fractions to match your
    broadcast overlay. Point `model_path` at an ONNX model only if you have one
@@ -186,6 +191,10 @@ monitor mix.
   `anthropic` or `openai`/`local`, with an API key (and base URL for local
   OpenAI-compatible servers). A missing SDK or a provider error degrades back to
   Mock mid-broadcast so the show keeps talking.
+- **Less repetition:** both casters now vary their wording. The offline (Mock)
+  provider rotates through several phrasings per situation so you don't hear the
+  same line every bomb plant, and the real LLM providers are given the last few
+  spoken lines and told to say something fresh.
 
 ### Downtime commentary (timeouts, pauses & breaks)
 
@@ -196,6 +205,17 @@ keeps things warm with the score and a stat or two. It waits a few seconds into 
 lull before starting, never interrupts live action, and yields entirely to replays.
 Tune or disable it under `downtime` in settings (`enabled`, `min_delay_seconds`,
 `interval_seconds`).
+
+### Slow-round filler (quiet live rounds)
+
+Some rounds are slow and methodical — long stretches of a live round with no kills
+or plants. Rather than let those go silent, the desk adds light filler after a
+short quiet spell: the analyst talks map control and the economy read, and the
+play-by-play caster keeps the score and momentum in the picture. It only speaks
+during genuine live play (never over freeze-time, timeouts, or replays), stays
+low-key and non-interrupting, and resets the moment real action happens again.
+Tune or disable it under `downtime` (`slow_round_enabled`,
+`slow_round_after_seconds`, `slow_round_interval_seconds`).
 
 ---
 

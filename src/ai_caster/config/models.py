@@ -285,6 +285,23 @@ class DowntimeSettings(_Section):
         le=300.0,
         description="Gap between downtime lines while a lull continues.",
     )
+    slow_round_enabled: bool = Field(
+        default=True,
+        description="Keep talking during slow, methodical live rounds when nothing "
+        "is happening, so a quiet round never goes silent.",
+    )
+    slow_round_after_seconds: float = Field(
+        default=16.0,
+        ge=4.0,
+        le=120.0,
+        description="Seconds of quiet live play before the casters add filler.",
+    )
+    slow_round_interval_seconds: float = Field(
+        default=18.0,
+        ge=5.0,
+        le=300.0,
+        description="Gap between filler lines while a live round stays quiet.",
+    )
 
 
 class AccountProvider(StrEnum):

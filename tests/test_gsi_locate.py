@@ -46,3 +46,14 @@ def test_default_device_string_routes_to_default_output(monkeypatch):
     monkeypatch.setattr(factory, "_available", lambda mod: True)
     sink = factory.create_output_sink("default", 24000, "play_by_play")
     assert type(sink).__name__ == "SoundDeviceSink"
+
+
+def test_available_monitors_never_raises():
+    from ai_caster.capture.backends.monitor import MonitorInfo, available_monitors
+
+    monitors = available_monitors()
+    assert isinstance(monitors, list)
+    # Headless CI usually has no mss backend -> empty list is a valid answer.
+    for info in monitors:
+        assert isinstance(info, MonitorInfo)
+        assert info.label

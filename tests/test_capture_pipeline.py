@@ -143,3 +143,33 @@ def test_start_is_idempotent():
     pipeline.start()  # no error, still one thread
     assert pipeline.is_running
     pipeline.stop()
+
+
+def test_snapshot_grabs_a_frame_while_stopped():
+    pipeline = CapturePipeline(SyntheticFrameSource(8, 8), target_fps=60)
+    assert not pipeline.is_running
+    frame = pipeline.snapshot()
+    assert frame is not None and frame.is_valid
+    # Snapshot must leave the source closed again when capture isn't running.
+    assert not pipeline.source.is_open
+    assert not pipeline.is_running
+
+
+def test_set_source_swaps_source_when_stopped():
+    pipeline = CapturePipeline(SyntheticFrameSource(8, 8), target_fps=60)
+    new_source = SyntheticFrameSource(16, 16, name="swapped")
+    pipeline.set_source(new_source)
+    assert pipeline.source is new_source
+    assert not pipeline.is_running
+
+
+def test_set_source_restarts_when_running():
+    pipeline = CapturePipeline(SyntheticFrameSource(8, 8), target_fps=120)
+    pipeline.start()
+    try:
+        new_source = SyntheticFrameSource(16, 16, name="swapped")
+        pipeline.set_source(new_source)
+        assert pipeline.source is new_source
+        assert pipeline.is_running  # kept running across the swap
+    finally:
+        pipeline.stop()

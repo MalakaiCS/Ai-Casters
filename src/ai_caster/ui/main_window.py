@@ -93,7 +93,7 @@ class MainWindow(QMainWindow):
         self._gsi_view = GSIView(application.gsi_server.address)
         self._match_view = MatchView()
         self._statistics_view = StatisticsView(application.statistics)
-        self._capture_view = CaptureView(application.capture)
+        self._capture_view = CaptureView(application.capture, application.settings_manager)
         self._vision_view = VisionView(application.vision)
         self._director_view = DirectorView(application.director)
         self._commentary_view = CommentaryView(application.play_by_play, application.analyst)

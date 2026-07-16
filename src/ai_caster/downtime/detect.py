@@ -48,3 +48,21 @@ def detect_lull(match: LiveMatch | None) -> LullState:
         return LullState(active=True, kind="warmup")
 
     return _LULL
+
+
+def is_live_round(match: LiveMatch | None) -> bool:
+    """True when a round is actively being played (not a lull, freeze-time or break).
+
+    This is the window the slow-round filler is allowed to speak in: real live
+    action, just without any events to react to. Freeze-time (the buy phase) and
+    round-over are excluded so the desk never talks over the reset.
+    """
+    if match is None or detect_lull(match).active:
+        return False
+    round_phase = (match.round_phase or "").lower()
+    if round_phase and round_phase != "live":
+        return False  # freezetime / over
+    active = (match.active_phase or "").lower()
+    if active and active != "live":
+        return False  # timeout/paused/… already caught by detect_lull, but be safe
+    return True

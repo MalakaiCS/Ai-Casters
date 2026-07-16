@@ -1,11 +1,17 @@
-"""Downtime commentary — fill timeouts, pauses and breaks with desk chatter.
+"""Downtime commentary — keep the desk talking when nothing is happening.
 
-During a broadcast lull there are no match events to react to, so this service
-runs a light timer: once a lull has lasted past a short delay, it periodically
-issues a low-key directive — the analyst covering *what to expect* from the team
-that called a timeout, the play-by-play caster keeping the desk warm with a stat
-or two — and stops the moment live action resumes. It never interrupts (LOW
-priority, ``interrupt=False``) and yields entirely to replays.
+Two related jobs, both driven off one light timer:
+
+* **Lulls** — a called timeout, a paused match, half-time or warm-up. Once a lull
+  has lasted past a short delay it periodically issues a low-key directive: the
+  analyst covering *what to expect* from the team that called a timeout, the
+  play-by-play caster keeping the desk warm with a stat or two.
+* **Slow live rounds** — a genuinely live round with no kills or plants for a
+  while (a methodical, patient round). Rather than go silent it adds light filler:
+  the analyst on map control / the economy read, the play-by-play caster on the
+  score and momentum. It resets the moment real action happens again.
+
+Both stay LOW priority and never interrupt, and both yield entirely to replays.
 
 The *decision* (:meth:`tick`) is separated from the timer thread so it's fully
 unit-tested with a fake clock; the thread just publishes whatever ``tick``
@@ -27,7 +33,7 @@ from ai_caster.director.directives import (
     DirectivePriority,
     Speaker,
 )
-from ai_caster.downtime.detect import LullState, detect_lull
+from ai_caster.downtime.detect import LullState, detect_lull, is_live_round
 from ai_caster.match.events import MatchModelUpdated
 from ai_caster.match.model import LiveMatch, Side
 from ai_caster.replay.events import ReplayStateChanged
@@ -45,6 +51,9 @@ class DowntimeCommentator:
         enabled: bool = True,
         min_delay_seconds: float = 12.0,
         interval_seconds: float = 25.0,
+        slow_round_enabled: bool = True,
+        slow_round_after_seconds: float = 16.0,
+        slow_round_interval_seconds: float = 18.0,
         tick_seconds: float = 3.0,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -52,6 +61,9 @@ class DowntimeCommentator:
         self._enabled = enabled
         self._min_delay = min_delay_seconds
         self._interval = interval_seconds
+        self._slow_enabled = slow_round_enabled
+        self._slow_after = slow_round_after_seconds
+        self._slow_interval = slow_round_interval_seconds
         self._tick = tick_seconds
         self._clock = clock
 
@@ -59,14 +71,18 @@ class DowntimeCommentator:
         self._match: LiveMatch | None = None
         self._replay_active = False
         self._lull_since: float | None = None
+        self._live_since: float | None = None  # when the current live round began
+        self._last_activity: float = float("-inf")  # last real match event we saw
         self._last_spoke: float = float("-inf")  # so the first fill isn't rate-limited
         self._rotation = 0
+        self._quiet_rotation = 0
 
         self._running = False
         self._thread: threading.Thread | None = None
         self._unsubscribes = [
             event_bus.subscribe(MatchModelUpdated, self._on_model),
             event_bus.subscribe(ReplayStateChanged, self._on_replay),
+            event_bus.subscribe(CommentaryDirectiveIssued, self._on_directive),
         ]
 
     # -- inputs --------------------------------------------------------- #
@@ -82,6 +98,13 @@ class DowntimeCommentator:
                     self._lull_since = self._clock()
             else:
                 self._lull_since = None
+            # Track when a live round begins so quiet-round filler measures the
+            # silence from the moment play actually started.
+            if is_live_round(match):
+                if self._live_since is None:
+                    self._live_since = self._clock()
+            else:
+                self._live_since = None
 
     def _on_replay(self, event: ReplayStateChanged) -> None:
         self.on_replay(getattr(event.state, "active", False))
@@ -90,29 +113,67 @@ class DowntimeCommentator:
         with self._lock:
             self._replay_active = bool(active)
 
+    def _on_directive(self, event: CommentaryDirectiveIssued) -> None:
+        """Note real match activity so quiet-round filler only fires into silence."""
+        directive = event.directive
+        if directive is None:
+            return
+        reason = directive.reason or ""
+        # Ignore our own filler (downtime:/quiet:) — only live action counts.
+        if reason.startswith(("downtime:", "quiet:")):
+            return
+        with self._lock:
+            self._last_activity = self._clock()
+
     def set_enabled(self, enabled: bool) -> None:
         with self._lock:
             self._enabled = enabled
+
+    def set_slow_round_enabled(self, enabled: bool) -> None:
+        with self._lock:
+            self._slow_enabled = enabled
 
     # -- decision (pure-ish; fully testable) ---------------------------- #
     def tick(self, now: float) -> CommentaryDirective | None:
         """Return a directive to speak right now, or None."""
         with self._lock:
-            if not self._enabled or self._replay_active or self._lull_since is None:
+            if not self._enabled or self._replay_active:
                 return None
             match = self._match
             lull = detect_lull(match)
-            if not lull.active:
-                self._lull_since = None
-                return None
-            if now - self._lull_since < self._min_delay:
-                return None
-            if now - self._last_spoke < self._interval:
-                return None
-            directive = self._build_directive(lull, match, self._rotation)
-            self._last_spoke = now
-            self._rotation += 1
-            return directive
+            if lull.active:
+                return self._tick_lull(now, lull, match)
+            # No lull — keep the current live round from going silent.
+            self._lull_since = None
+            return self._tick_quiet(now, match)
+
+    def _tick_lull(
+        self, now: float, lull: LullState, match: LiveMatch | None
+    ) -> CommentaryDirective | None:
+        if self._lull_since is None:
+            self._lull_since = now
+        if now - self._lull_since < self._min_delay:
+            return None
+        if now - self._last_spoke < self._interval:
+            return None
+        directive = self._build_directive(lull, match, self._rotation)
+        self._last_spoke = now
+        self._rotation += 1
+        return directive
+
+    def _tick_quiet(self, now: float, match: LiveMatch | None) -> CommentaryDirective | None:
+        if not self._slow_enabled or not is_live_round(match) or self._live_since is None:
+            return None
+        # Silence measured from the later of "round went live" and "last event".
+        quiet_since = max(self._live_since, self._last_activity)
+        if now - quiet_since < self._slow_after:
+            return None
+        if now - self._last_spoke < self._slow_interval:
+            return None
+        directive = self._build_quiet_directive(match, self._quiet_rotation)
+        self._last_spoke = now
+        self._quiet_rotation += 1
+        return directive
 
     def _build_directive(
         self, lull: LullState, match: LiveMatch | None, rotation: int
@@ -158,6 +219,79 @@ class DowntimeCommentator:
             "downtime_stat",
             {"score": score, "round": rounds, "map": map_name},
         )
+
+    def _build_quiet_directive(
+        self, match: LiveMatch | None, rotation: int
+    ) -> CommentaryDirective:
+        speaker, topic, context = self._plan_quiet(match, rotation)
+        kind = DirectiveKind.CALL if speaker is Speaker.PLAY_BY_PLAY else DirectiveKind.ANALYZE
+        return CommentaryDirective(
+            speaker=speaker,
+            kind=kind,
+            priority=DirectivePriority.LOW,
+            excitement=0.2,
+            topic=topic,
+            interrupt=False,
+            reason="quiet:live",
+            context=context,
+        )
+
+    def _plan_quiet(self, match: LiveMatch | None, rotation: int) -> tuple[Speaker, str, dict]:
+        """Rotate through light filler for a quiet live round, using real facts only."""
+        score = self._score(match)
+        map_name = getattr(match, "map_name", None) or "this map"
+        rounds = getattr(match, "round_number", 0) or 0
+        # Three-way rotation: analyst positioning, analyst economy, play-by-play stat.
+        slot = rotation % 3
+        if slot == 0:
+            return (
+                Speaker.ANALYST,
+                "slow_round_positioning",
+                {
+                    "map": map_name,
+                    "ct_alive": self._alive(match, Side.CT),
+                    "t_alive": self._alive(match, Side.T),
+                },
+            )
+        if slot == 1:
+            return (
+                Speaker.ANALYST,
+                "slow_round_economy",
+                {
+                    "ct_buy": self._buy(match, Side.CT),
+                    "t_buy": self._buy(match, Side.T),
+                    "map": map_name,
+                },
+            )
+        return (
+            Speaker.PLAY_BY_PLAY,
+            "slow_round_stat",
+            {
+                "score": score,
+                "round": rounds,
+                "map": map_name,
+                "momentum_leader": self._momentum_leader(match),
+            },
+        )
+
+    @staticmethod
+    def _alive(match: LiveMatch | None, side: Side) -> int | None:
+        if match is None:
+            return None
+        return match.team(side).players_alive
+
+    @staticmethod
+    def _buy(match: LiveMatch | None, side: Side) -> str:
+        if match is None:
+            return "unknown"
+        return match.team(side).buy_type.value
+
+    @staticmethod
+    def _momentum_leader(match: LiveMatch | None) -> str | None:
+        if match is None:
+            return None
+        leader = match.momentum.leader
+        return leader.value if leader is not None else None
 
     @staticmethod
     def _score(match: LiveMatch | None) -> str:

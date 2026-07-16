@@ -157,6 +157,52 @@ class CapturePipeline(Service):
         _log.info("Capture stopped (source=%s)", self._source.name)
         self._publish_status(False, "stopped")
 
+    def set_source(self, source: FrameSource) -> None:
+        """Swap the frame source (e.g. after the operator picks a new monitor).
+
+        If capture is running it is stopped, the source replaced, and capture
+        restarted so the change takes effect immediately; otherwise the source is
+        simply replaced for the next start.
+        """
+        was_running = self.is_running
+        if was_running:
+            self.stop()
+        else:
+            # Ensure any previously-opened (but not running) source is released.
+            try:
+                self._source.close()
+            except Exception:  # noqa: BLE001 - best effort
+                pass
+        self._source = source
+        if was_running:
+            self.start()
+
+    def snapshot(self) -> Frame | None:
+        """Grab a single frame on demand — used to preview the source while stopped.
+
+        Opens the source if needed, grabs one frame, and (when capture is not
+        running) closes it again, so the operator can see what the selected
+        monitor/source looks like before committing to a live capture.
+        """
+        if self.is_running:
+            return self.latest_frame()
+        opened = False
+        try:
+            if not self._source.is_open:
+                self._source.open()
+                opened = True
+            frame = self._source.read()
+            if frame is not None:
+                frame = self._uploader.upload(frame)
+                self._buffer.append(frame)
+            return frame
+        finally:
+            if opened:
+                try:
+                    self._source.close()
+                except Exception:  # noqa: BLE001 - best effort
+                    pass
+
     # ------------------------------------------------------------------ #
     # Core iteration
     # ------------------------------------------------------------------ #

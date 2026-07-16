@@ -22,6 +22,9 @@ class LLMRequest:
     speaker: str
     excitement: float
     context: dict[str, Any] = field(default_factory=dict)
+    # Recently spoken lines the model should avoid echoing, so the broadcast does
+    # not repeat itself. Advisory: the mock ignores it (it rotates instead).
+    avoid: tuple[str, ...] = ()
     model: str = ""  # blank -> provider default
     max_tokens: int = 90
     # Advisory only; providers that reject sampling params (e.g. Anthropic on

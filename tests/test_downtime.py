@@ -39,6 +39,9 @@ def test_live_and_freezetime_are_not_lulls():
 
 # --- commentator decisions ------------------------------------------------- #
 def _commentator(bus, **kwargs):
+    # Slow-round filler off by default here so these tests isolate lull behaviour;
+    # the dedicated slow-round tests below enable it explicitly.
+    kwargs.setdefault("slow_round_enabled", False)
     return DowntimeCommentator(
         bus, min_delay_seconds=10.0, interval_seconds=20.0, clock=lambda: 0.0, **kwargs
     )
@@ -106,10 +109,112 @@ def test_tick_publishes_nothing_when_no_lull_via_bus():
     bus = EventBus()
     issued: list = []
     bus.subscribe(CommentaryDirectiveIssued, issued.append)
-    dc = _commentator(bus)
+    dc = _commentator(bus)  # slow-round filler off
     dc.on_model(_match(active_phase="live"))
     # Manually drive one decision the way the timer would.
     d = dc.tick(100.0)
     if d is not None:
         bus.publish(CommentaryDirectiveIssued(directive=d))
     assert issued == []
+
+
+# --- slow / quiet live-round filler ---------------------------------------- #
+from ai_caster.downtime.detect import is_live_round  # noqa: E402
+from ai_caster.match.model import Momentum  # noqa: E402
+
+
+def _slow(bus, **kwargs):
+    kwargs.setdefault("slow_round_enabled", True)
+    return DowntimeCommentator(
+        bus,
+        min_delay_seconds=10.0,
+        interval_seconds=20.0,
+        slow_round_after_seconds=16.0,
+        slow_round_interval_seconds=18.0,
+        clock=lambda: 0.0,
+        **kwargs,
+    )
+
+
+def test_is_live_round_only_true_during_live_play():
+    assert is_live_round(_match(active_phase="live"))
+    assert is_live_round(_match(round_phase="live"))
+    assert not is_live_round(_match(round_phase="freezetime"))
+    assert not is_live_round(_match(active_phase="timeout_ct"))
+    assert not is_live_round(None)
+
+
+def test_quiet_live_round_fills_after_delay():
+    dc = _slow(EventBus())
+    dc.on_model(_match(active_phase="live"))  # live starts at t=0
+    assert dc.tick(10.0) is None  # not quiet long enough yet
+    d = dc.tick(20.0)  # past the 16s quiet threshold
+    assert d is not None
+    assert d.reason == "quiet:live"
+    assert d.interrupt is False
+    assert d.excitement < 0.4
+
+
+def test_quiet_filler_resets_on_activity():
+    dc = _slow(EventBus())
+    dc.on_model(_match(active_phase="live"))
+    # A real event (a live kill directive) lands at t=0 — silence timer restarts.
+    dc._on_directive(CommentaryDirectiveIssued(directive=_live_directive()))
+    # After activity at t=0, we must wait the full quiet window again.
+    assert dc.tick(10.0) is None
+    assert dc.tick(20.0) is not None
+
+
+def test_quiet_filler_ignores_its_own_output_as_activity():
+    dc = _slow(EventBus())
+    dc.on_model(_match(active_phase="live"))
+    first = dc.tick(20.0)
+    assert first is not None and first.reason == "quiet:live"
+    # Feeding our own filler back must NOT count as match activity.
+    dc._on_directive(CommentaryDirectiveIssued(directive=first))
+    # Only the interval gate applies now, not a fresh full quiet window.
+    assert dc.tick(40.0) is not None
+
+
+def test_quiet_filler_silent_when_disabled():
+    dc = _slow(EventBus(), slow_round_enabled=False)
+    dc.on_model(_match(active_phase="live"))
+    assert dc.tick(100.0) is None
+
+
+def test_quiet_filler_rotates_topics_and_uses_facts():
+    dc = _slow(EventBus())
+    dc.on_model(
+        _match(
+            active_phase="live",
+            map_name="de_inferno",
+            momentum=Momentum(0.5),
+        )
+    )
+    first = dc.tick(20.0)
+    second = dc.tick(40.0)
+    third = dc.tick(60.0)
+    topics = {first.topic, second.topic, third.topic}
+    assert topics == {
+        "slow_round_positioning",
+        "slow_round_economy",
+        "slow_round_stat",
+    }
+
+
+def _live_directive():
+    from ai_caster.director.directives import (
+        CommentaryDirective,
+        DirectiveKind,
+        DirectivePriority,
+        Speaker,
+    )
+
+    return CommentaryDirective(
+        speaker=Speaker.PLAY_BY_PLAY,
+        kind=DirectiveKind.CALL,
+        priority=DirectivePriority.HIGH,
+        excitement=0.9,
+        topic="Kill",
+        reason="event:Kill",
+    )
