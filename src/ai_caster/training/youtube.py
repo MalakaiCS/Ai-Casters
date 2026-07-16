@@ -52,6 +52,21 @@ def extract_video_id(url_or_id: str) -> str:
     return vid
 
 
+def _fetch_raw(api_cls, video_id: str, languages: list[str]) -> list[dict]:
+    """Fetch caption rows, tolerating both youtube-transcript-api API generations.
+
+    * ``<= 0.6.x`` exposes the classmethod ``get_transcript`` returning list[dict].
+    * ``>= 1.0`` uses an instance ``fetch`` returning a ``FetchedTranscript`` (which
+      offers ``to_raw_data()`` / iterable snippets with ``.text/.start/.duration``).
+    """
+    if hasattr(api_cls, "get_transcript"):
+        return list(api_cls.get_transcript(video_id, languages=languages))
+    fetched = api_cls().fetch(video_id, languages=languages)
+    if hasattr(fetched, "to_raw_data"):
+        return list(fetched.to_raw_data())
+    return [{"text": snip.text, "start": snip.start, "duration": snip.duration} for snip in fetched]
+
+
 def _to_segments(raw: list[dict]) -> list[TranscriptSegment]:
     """Map youtube-transcript-api rows to anonymized transcript segments."""
     segments: list[TranscriptSegment] = []
@@ -78,11 +93,10 @@ def fetch_youtube_transcript(
         from youtube_transcript_api import YouTubeTranscriptApi
     except ImportError as exc:
         raise YouTubeTranscriptError(
-            "YouTube captions need the training extra: "
-            'pip install "ai-esports-caster[training]"'
+            'YouTube captions need the training extra: pip install "ai-esports-caster[training]"'
         ) from exc
     try:  # pragma: no cover - network I/O
-        raw = YouTubeTranscriptApi.get_transcript(video_id, languages=list(languages))
+        raw = _fetch_raw(YouTubeTranscriptApi, video_id, list(languages))
     except Exception as exc:  # noqa: BLE001 - library raises several types
         raise YouTubeTranscriptError(
             f"Couldn't get captions for {video_id}: {exc}. The video may have no "

@@ -10,6 +10,7 @@ from ai_caster.training.models import Authorization, TranscriptSegment
 from ai_caster.training.pipeline import TrainingPipeline
 from ai_caster.training.youtube import (
     YouTubeTranscriptError,
+    _fetch_raw,
     _to_segments,
     extract_video_id,
 )
@@ -51,6 +52,50 @@ def test_to_segments_maps_and_filters():
     assert segments[1].end == pytest.approx(5.5)
 
 
+_RAW = [{"text": "hi", "start": 0.0, "duration": 1.0}]
+
+
+class _OldApi:
+    """youtube-transcript-api <= 0.6.x: classmethod get_transcript -> list[dict]."""
+
+    @classmethod
+    def get_transcript(cls, video_id, languages=None):
+        return _RAW
+
+
+class _Snippet:
+    def __init__(self, text, start, duration):
+        self.text, self.start, self.duration = text, start, duration
+
+
+class _NewApi:
+    """youtube-transcript-api >= 1.0: instance.fetch -> FetchedTranscript."""
+
+    class _Fetched:
+        def to_raw_data(self):
+            return _RAW
+
+    def fetch(self, video_id, languages=None):
+        return self._Fetched()
+
+
+class _NewApiIterable:
+    """>= 1.0 variant whose FetchedTranscript is only iterable (no to_raw_data)."""
+
+    class _Fetched:
+        def __iter__(self):
+            return iter([_Snippet("hi", 0.0, 1.0)])
+
+    def fetch(self, video_id, languages=None):
+        return self._Fetched()
+
+
+@pytest.mark.parametrize("api_cls", [_OldApi, _NewApi, _NewApiIterable])
+def test_fetch_raw_handles_both_api_generations(api_cls):
+    raw = _fetch_raw(api_cls, "vid", ["en"])
+    assert raw == _RAW
+
+
 def test_pipeline_add_youtube_authorized(monkeypatch):
     def fake_fetch(url, *, languages=("en",)):
         return [
@@ -63,9 +108,7 @@ def test_pipeline_add_youtube_authorized(monkeypatch):
     import ai_caster.training.pipeline as pipe_mod  # noqa: F401
 
     pipeline = TrainingPipeline()
-    source = pipeline.add_youtube(
-        "https://youtu.be/dQw4w9WgXcQ", authorization=AUTHORIZED
-    )
+    source = pipeline.add_youtube("https://youtu.be/dQw4w9WgXcQ", authorization=AUTHORIZED)
     assert source in pipeline.sources
     assert source.source_id == "dQw4w9WgXcQ"
     # Roles are anonymized to generic labels.
