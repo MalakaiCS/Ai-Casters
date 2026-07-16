@@ -39,6 +39,28 @@ from ai_caster.auth.client import AuthClient
 from ai_caster.auth.roles import can_train, role_label
 from ai_caster.config.manager import SettingsManager
 
+_ROLE_LABELS = {"play_by_play": "Play-by-play", "analyst": "Analyst"}
+
+
+def _format_role_breakdown(breakdown: dict) -> str:
+    """Human-readable "what's relevant for PBP vs analytical" summary."""
+    lines = ["What's relevant for each role (from your sources):"]
+    for role in ("play_by_play", "analyst"):
+        data = breakdown.get(role) or {}
+        pacing = data.get("pacing")
+        vocab = data.get("vocabulary")
+        count = data.get("lines", 0)
+        if not pacing or count == 0:
+            lines.append(f"  {_ROLE_LABELS[role]} — no lines detected.")
+            continue
+        top = ", ".join(term for term, _ in (vocab.top_terms[:8] if vocab else [])) or "—"
+        lines.append(
+            f"  {_ROLE_LABELS[role]} — {count} lines, "
+            f"{pacing.avg_words_per_line:.1f} words/line, "
+            f"{pacing.words_per_second:.2f} words/sec; top: {top}"
+        )
+    return "\n".join(lines)
+
 
 class TrainingView(QWidget):
     """Teach the AI general style from authorized sources, and tune tone/pacing."""
@@ -123,6 +145,17 @@ class TrainingView(QWidget):
 
         self._sources = QListWidget()
         layout.addWidget(self._sources)
+
+        layout.addWidget(QLabel("Or paste a transcript (one line per beat):"))
+        self._paste = QPlainTextEdit()
+        self._paste.setPlaceholderText(
+            "Paste transcript text here. Optionally label lines — e.g.\n"
+            "PBP: he takes the entry frag, first blood!\n"
+            "Analyst: that works because they had map control to rotate\n"
+            "Unlabelled lines are sorted into play-by-play vs analyst automatically."
+        )
+        self._paste.setFixedHeight(110)
+        layout.addWidget(self._paste)
         return box
 
     def _build_analysis_box(self) -> QGroupBox:
@@ -267,20 +300,22 @@ class TrainingView(QWidget):
         self._media.clear()
         self._youtube.clear()
         self._sources.clear()
+        self._paste.clear()
 
     # ------------------------------------------------------------------ #
     # Analysis (worker thread)
     # ------------------------------------------------------------------ #
     def _on_analyze(self) -> None:
-        if not self._dirs and not self._media and not self._youtube:
+        pasted = self._paste.toPlainText().strip()
+        if not self._dirs and not self._media and not self._youtube and not pasted:
             self._results.setPlainText(
-                "Add at least one transcript folder, recording, or YouTube link first."
+                "Add a transcript folder, recording, YouTube link, or paste a transcript first."
             )
             return
-        if (self._media or self._youtube) and not self._consent.text().strip():
+        if (self._media or self._youtube or pasted) and not self._consent.text().strip():
             self._results.setPlainText(
-                "Recordings and YouTube links need a consent/rights reference (that "
-                "you own or are licensed to use them). Enter one above."
+                "Recordings, YouTube links and pasted transcripts need a consent/rights "
+                "reference (that you own or are licensed to use them). Enter one above."
             )
             return
         self._analyze_btn.setEnabled(False)
@@ -289,12 +324,13 @@ class TrainingView(QWidget):
             list(self._dirs),
             list(self._media),
             list(self._youtube),
+            pasted,
             self._consent.text().strip(),
         )
         threading.Thread(target=self._run_analysis, args=args, name="train", daemon=True).start()
 
     def _run_analysis(
-        self, dirs: list[str], media: list[str], youtube: list[str], consent: str
+        self, dirs: list[str], media: list[str], youtube: list[str], pasted: str, consent: str
     ) -> None:
         try:
             from ai_caster.training.models import Authorization
@@ -314,6 +350,8 @@ class TrainingView(QWidget):
                     pipeline.add_media(item, authorization=auth, transcriber=transcriber)
             for link in youtube:
                 pipeline.add_youtube(link, authorization=auth)
+            if pasted:
+                pipeline.add_text(pasted, authorization=auth)
 
             if not pipeline.sources:
                 self._analysis_done.emit(
@@ -324,7 +362,8 @@ class TrainingView(QWidget):
             self._last_profile = profile
             summary = pipeline.summary(profile)
             suggested = pipeline.suggested_director_settings(profile)
-            self._analysis_done.emit((summary, suggested))
+            roles = _format_role_breakdown(pipeline.role_breakdown())
+            self._analysis_done.emit((f"{summary}\n\n{roles}", suggested))
         except Exception as exc:  # noqa: BLE001 - surfaced to the operator
             self._analysis_done.emit(exc)
 

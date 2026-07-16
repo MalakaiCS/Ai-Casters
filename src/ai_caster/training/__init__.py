@@ -13,6 +13,7 @@ individual is modelled or imitated**. The profile can *suggest* pacing defaults 
 review; it is never applied automatically.
 """
 
+from ai_caster.training.analysis import compute_role_profiles
 from ai_caster.training.guardrails import (
     POLICY,
     AudioInputRejected,
@@ -30,6 +31,7 @@ from ai_caster.training.models import (
     VocabularyProfile,
 )
 from ai_caster.training.pipeline import TrainingPipeline
+from ai_caster.training.textinput import classify_role, parse_transcript_text
 from ai_caster.training.transcribe import Transcriber, WhisperTranscriber
 from ai_caster.training.youtube import (
     YouTubeTranscriptError,
@@ -53,6 +55,9 @@ __all__ = [
     "fetch_youtube_transcript",
     "extract_video_id",
     "YouTubeTranscriptError",
+    "parse_transcript_text",
+    "classify_role",
+    "compute_role_profiles",
     "Authorization",
     "TranscriptSegment",
     "TrainingSource",

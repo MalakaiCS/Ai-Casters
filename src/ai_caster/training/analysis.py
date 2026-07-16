@@ -15,11 +15,16 @@ import numpy as np
 
 from ai_caster.training.guardrails import FILLER_WORDS, is_learnable_token
 from ai_caster.training.models import (
+    Authorization,
     PacingProfile,
     TrainingSource,
     TranscriptSegment,
     VocabularyProfile,
 )
+
+# A throwaway authorization for internal analysis-only source wrappers (already
+# authorized upstream; never re-checked or persisted).
+_INTERNAL_AUTH = Authorization(authorized=True, consent_reference="internal")
 
 
 def _gaps_within_source(segments: list[TranscriptSegment]) -> list[float]:
@@ -117,3 +122,46 @@ def compute_vocabulary(
         top_terms=common_terms,
         top_bigrams=common_bigrams,
     )
+
+
+def _segments_by_role(sources: list[TrainingSource]) -> dict[str, list[TranscriptSegment]]:
+    """Bucket every segment into play-by-play vs analyst.
+
+    Explicit ``play_by_play`` / ``analyst`` roles are taken as-is; a generic
+    ``commentator`` line is sorted by its own language so a single-track source
+    (e.g. YouTube captions) still yields a per-role split.
+    """
+    from ai_caster.training.textinput import classify_role
+
+    buckets: dict[str, list[TranscriptSegment]] = {"play_by_play": [], "analyst": []}
+    for source in sources:
+        for segment in source.segments:
+            role = segment.role
+            if role not in ("play_by_play", "analyst"):
+                role = classify_role(segment.text)
+            buckets[role].append(segment)
+    return buckets
+
+
+def compute_role_profiles(
+    sources: list[TrainingSource], *, top_n: int = 15, min_count: int = 2
+) -> dict[str, dict]:
+    """Per-role pacing + vocabulary — "what's relevant for PBP vs analytical".
+
+    Returns ``{"play_by_play": {...}, "analyst": {...}}`` where each value has the
+    line count, a :class:`PacingProfile` and a :class:`VocabularyProfile`, so the
+    UI can show how the two roles differ (PBP: short/fast/hype terms; analyst:
+    longer/slower/strategy terms).
+    """
+    buckets = _segments_by_role(sources)
+    out: dict[str, dict] = {}
+    for role, segments in buckets.items():
+        # Wrap the bucket's segments in one throwaway source for the analyzers.
+        holder = TrainingSource(source_id=f"role:{role}", authorization=_INTERNAL_AUTH)
+        holder.segments.extend(segments)
+        out[role] = {
+            "lines": len(segments),
+            "pacing": compute_pacing([holder]),
+            "vocabulary": compute_vocabulary([holder], top_n=top_n, min_count=min_count),
+        }
+    return out

@@ -111,6 +111,42 @@ class TrainingPipeline:
         self._sources.append(source)
         return source
 
+    def add_text(self, text, *, authorization, source_id: str | None = None, language: str = "en"):
+        """Add a **pasted transcript** as an authorized source.
+
+        The text is parsed into role-tagged segments (play-by-play vs analyst,
+        by label or by content) and folded through the same anonymization; timing
+        is estimated from word count. Authorization is checked before it's added.
+        """
+        from ai_caster.training.guardrails import anonymize_role
+        from ai_caster.training.models import TranscriptSegment
+        from ai_caster.training.textinput import parse_transcript_text
+
+        ensure_authorized(TrainingSource(source_id or "pasted", authorization))
+        parsed = parse_transcript_text(str(text))
+        segments = [
+            TranscriptSegment(
+                role=anonymize_role(seg.role), text=seg.text, start=seg.start, end=seg.end
+            )
+            for seg in parsed
+            if seg.text.strip()
+        ]
+        source = TrainingSource(
+            source_id=source_id or "pasted",
+            authorization=authorization,
+            segments=segments,
+            language=language,
+        )
+        ensure_authorized(source)
+        self._sources.append(source)
+        return source
+
+    def role_breakdown(self) -> dict:
+        """Per-role pacing/vocabulary across all gathered sources (PBP vs analyst)."""
+        from ai_caster.training.analysis import compute_role_profiles
+
+        return compute_role_profiles(self._sources)
+
     def run(self) -> StyleProfile:
         """Analyse the gathered sources into a single aggregate style profile."""
         language = self._sources[0].language if self._sources else "en"

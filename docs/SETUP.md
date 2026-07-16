@@ -233,8 +233,12 @@ clones a voice, never models an identifiable person, and only ever *suggests*
 settings for review.
 
 **In the app (Staff and above):** open **Train the AI**. Add authorized transcript
-folders, recordings you own, and/or **YouTube links** (with a consent reference),
-click **Analyze**, and review the learned style. The **Tone & pacing** panel sets
+folders, recordings you own, **YouTube links**, and/or **paste a transcript**
+directly into the text box (with a consent reference), click **Analyze**, and
+review the learned style. Analysis also **splits what's relevant for play-by-play
+vs analytical casting** — pasted lines can be labelled (`PBP:` / `Analyst:`) or
+are sorted automatically by their language, and the results show each role's pace
+and top terms. The **Tone & pacing** panel sets
 baseline excitement, the minimum gap between lines (when to hold back) and whether
 the play-by-play may interrupt — these apply to the live director as soon as you
 save. Transcribing recordings and fetching YouTube captions in-app need the
