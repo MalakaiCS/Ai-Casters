@@ -42,6 +42,30 @@ def test_excitement_scales_with_importance_and_baseline():
     assert policy.excitement_for_event(ClutchWon()) > policy.excitement_for_event(Kill())
 
 
+def test_series_importance_lifts_excitement():
+    # The same play is called harder when the series is on the line.
+    early = policy.excitement_for_event(Kill(), series_importance=0.0)
+    finals = policy.excitement_for_event(Kill(), series_importance=1.0)
+    assert finals > early
+
+
+def test_contrast_widens_gap_between_minor_and_defining_plays():
+    minor, defining = Kill(), ClutchWon()
+    # Flat delivery (contrast 0): a moderate gap.
+    flat_gap = policy.excitement_for_event(defining, contrast=0.0) - policy.excitement_for_event(
+        minor, contrast=0.0
+    )
+    # High contrast: minor plays get calmer, defining plays stay peaked -> wider gap.
+    sharp_gap = policy.excitement_for_event(defining, contrast=1.0) - policy.excitement_for_event(
+        minor, contrast=1.0
+    )
+    assert sharp_gap > flat_gap
+    # High contrast pulls a minor play's excitement down.
+    assert policy.excitement_for_event(minor, contrast=1.0) < policy.excitement_for_event(
+        minor, contrast=0.0
+    )
+
+
 def test_context_extracts_event_facts():
     ctx = policy.context_for_event(Kill(round_number=4, killer_name="alice", victim_name="bob"))
     assert ctx["round"] == 5

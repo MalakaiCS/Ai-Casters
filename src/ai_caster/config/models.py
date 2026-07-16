@@ -248,6 +248,13 @@ class CommentarySettings(_Section):
     excitement: float = Field(
         default=0.7, ge=0.0, le=1.0, description="Baseline energy for play-by-play."
     )
+    excitement_contrast: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="How much harder to react to game/series-defining plays vs minor "
+        "ones (0 = flat delivery, 1 = calm on minor plays, peak on defining ones).",
+    )
     speech_delay_ms: int = Field(
         default=0, ge=0, le=10000, description="Broadcast delay applied before speaking."
     )

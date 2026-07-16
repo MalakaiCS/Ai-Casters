@@ -146,6 +146,7 @@ class Application:
             baseline_excitement=settings.commentary.excitement,
             allow_interruptions=settings.commentary.allow_interruptions,
             min_speech_gap=settings.commentary.min_speech_gap_ms / 1000.0,
+            excitement_contrast=settings.commentary.excitement_contrast,
             replay_integration_enabled=settings.replay.enabled,
             treat_unknown_as_live=settings.replay.treat_unknown_as_live,
         )
@@ -452,6 +453,7 @@ class Application:
             baseline_excitement=settings.commentary.excitement,
             allow_interruptions=settings.commentary.allow_interruptions,
             min_speech_gap=settings.commentary.min_speech_gap_ms / 1000.0,
+            excitement_contrast=settings.commentary.excitement_contrast,
         )
 
     def _on_gsi_connection(self, event: GSIConnectionChanged) -> None:

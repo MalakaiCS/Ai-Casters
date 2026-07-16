@@ -97,12 +97,33 @@ def base_excitement_for_event(event: MatchEvent) -> float:
 
 
 def excitement_for_event(
-    event: MatchEvent, *, round_importance: float = 0.0, baseline: float = 0.7
+    event: MatchEvent,
+    *,
+    round_importance: float = 0.0,
+    series_importance: float = 0.0,
+    baseline: float = 0.7,
+    contrast: float = 0.0,
 ) -> float:
-    """Final excitement in ``[0, 1]``: intrinsic, lifted by round importance and
-    scaled by the operator's baseline energy."""
+    """Final excitement in ``[0, 1]``.
+
+    Combines four signals so the caller reacts *proportionally to how big the
+    moment is* — the whole point of "hype the game-defining plays, stay calm on
+    the minor ones":
+
+    * **intrinsic** — the event's own weight (an ace >> a mid-round trade).
+    * **contrast** — reshapes the intrinsic value so a higher setting widens the
+      gap between minor and defining plays (minor plays get calmer, huge plays
+      stay peaked); ``0`` is linear (backward-compatible).
+    * **stakes** — the bigger of round/series importance lifts everything, so the
+      same play is called harder at match/series point than in an early round.
+    * **baseline** — the operator's overall energy.
+    """
     base = base_excitement_for_event(event)
-    lifted = base + 0.25 * round_importance
+    # contrast 0 -> gamma 1 (linear); contrast 1 -> gamma 3 (steep dynamic range).
+    gamma = 1.0 + 2.0 * max(0.0, min(contrast, 1.0))
+    shaped = base**gamma
+    stakes = max(round_importance, series_importance)
+    lifted = shaped + 0.25 * stakes
     scaled = lifted * (0.6 + 0.4 * baseline)
     return round(max(0.0, min(scaled, 1.0)), 4)
 

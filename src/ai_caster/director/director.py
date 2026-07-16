@@ -51,6 +51,7 @@ class CommentaryDirector:
         baseline_excitement: float = 0.7,
         allow_interruptions: bool = True,
         min_speech_gap: float = 0.8,
+        excitement_contrast: float = 0.0,
         replay_integration_enabled: bool = True,
         treat_unknown_as_live: bool = False,
         history: int = 200,
@@ -60,12 +61,14 @@ class CommentaryDirector:
         self._baseline = baseline_excitement
         self._allow_interruptions = allow_interruptions
         self._min_gap = min_speech_gap
+        self._contrast = excitement_contrast
         self._replay_enabled = replay_integration_enabled
         self._treat_unknown_as_live = treat_unknown_as_live
         self._clock = clock
 
         self._lock = threading.RLock()
         self._round_importance = 0.0
+        self._series_importance = 0.0
         self._replay_active = False
         self._vision_replay = False
         self._current_priority = DirectivePriority.AMBIENT
@@ -89,6 +92,7 @@ class CommentaryDirector:
         baseline_excitement: float | None = None,
         allow_interruptions: bool | None = None,
         min_speech_gap: float | None = None,
+        excitement_contrast: float | None = None,
     ) -> None:
         """Apply tone/pacing changes live (e.g. from the training/tuning UI)."""
         with self._lock:
@@ -98,6 +102,8 @@ class CommentaryDirector:
                 self._allow_interruptions = allow_interruptions
             if min_speech_gap is not None:
                 self._min_gap = min_speech_gap
+            if excitement_contrast is not None:
+                self._contrast = excitement_contrast
 
     # ------------------------------------------------------------------ #
     # Accessors
@@ -133,6 +139,7 @@ class CommentaryDirector:
         if event.match is not None:
             with self._lock:
                 self._round_importance = getattr(event.match, "round_importance", 0.0)
+                self._series_importance = getattr(event.match, "series_importance", 0.0)
 
     def _on_vision_updated(self, event: VisionStateUpdated) -> None:
         state = event.state
@@ -209,7 +216,11 @@ class CommentaryDirector:
                 return []
 
         excitement = policy.excitement_for_event(
-            event, round_importance=self._round_importance, baseline=self._baseline
+            event,
+            round_importance=self._round_importance,
+            series_importance=self._series_importance,
+            baseline=self._baseline,
+            contrast=self._contrast,
         )
         kind = DirectiveKind.CALL if speaker is Speaker.PLAY_BY_PLAY else DirectiveKind.ANALYZE
         primary = CommentaryDirective(

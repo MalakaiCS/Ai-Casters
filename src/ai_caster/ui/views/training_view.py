@@ -163,6 +163,13 @@ class TrainingView(QWidget):
         layout.addWidget(self._excite_label)
         layout.addWidget(self._excitement)
 
+        self._contrast_label = QLabel()
+        self._contrast = QSlider(Qt.Orientation.Horizontal)
+        self._contrast.setRange(0, 100)
+        self._contrast.valueChanged.connect(self._update_tuning_labels)
+        layout.addWidget(self._contrast_label)
+        layout.addWidget(self._contrast)
+
         self._gap_label = QLabel()
         self._gap = QSlider(Qt.Orientation.Horizontal)
         self._gap.setRange(0, 3000)
@@ -399,12 +406,17 @@ class TrainingView(QWidget):
     def _load_tuning(self) -> None:
         commentary = self._settings.settings.commentary
         self._excitement.setValue(int(round(commentary.excitement * 100)))
+        self._contrast.setValue(int(round(commentary.excitement_contrast * 100)))
         self._gap.setValue(commentary.min_speech_gap_ms)
         self._interrupt.setChecked(commentary.allow_interruptions)
         self._update_tuning_labels()
 
     def _update_tuning_labels(self) -> None:
         self._excite_label.setText(f"Baseline excitement: {self._excitement.value()}%")
+        self._contrast_label.setText(
+            f"Reaction contrast: {self._contrast.value()}% "
+            "(higher = calm on minor plays, big hype on game/series-defining ones)"
+        )
         self._gap_label.setText(
             f"Minimum gap between lines: {self._gap.value()} ms (higher = calmer, more selective)"
         )
@@ -420,6 +432,7 @@ class TrainingView(QWidget):
         commentary = current.commentary.model_copy(
             update={
                 "excitement": self._excitement.value() / 100.0,
+                "excitement_contrast": self._contrast.value() / 100.0,
                 "min_speech_gap_ms": self._gap.value(),
                 "allow_interruptions": self._interrupt.isChecked(),
             }

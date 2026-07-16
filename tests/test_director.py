@@ -184,3 +184,10 @@ def test_configure_updates_tone_and_pacing_live():
     director.configure(baseline_excitement=0.2)
     assert director._baseline == 0.2
     assert director._min_gap == 1.5
+
+
+def test_configure_updates_excitement_contrast():
+    director, _issued, _ = _director(excitement_contrast=0.1)
+    assert director._contrast == 0.1
+    director.configure(excitement_contrast=0.8)
+    assert director._contrast == 0.8
