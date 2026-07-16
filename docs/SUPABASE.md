@@ -113,28 +113,31 @@ create table if not exists public.profiles (
 
 alter table public.profiles enable row level security;
 
+-- Read the caller's role WITHOUT triggering RLS. This is the key to avoiding
+-- "infinite recursion detected in policy for relation profiles": a policy on
+-- profiles must NOT run a plain sub-select on profiles (that re-evaluates the
+-- policies forever). A SECURITY DEFINER function bypasses RLS, so it's safe to
+-- call from inside a profiles policy.
+create or replace function public.is_manager()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role in ('owner','founder','admin')
+  );
+$$;
+
 -- A user can always read their own row.
 create policy "profiles are readable by owner"
   on public.profiles for select using (auth.uid() = id);
 
 -- Managers (admin/founder/owner) can read every profile for the Team view.
+-- Uses the SECURITY DEFINER helper above, so there is no recursion.
 create policy "profiles are readable by managers"
-  on public.profiles for select using (
-    exists (
-      select 1 from public.profiles p
-      where p.id = auth.uid() and p.role in ('owner','founder','admin')
-    )
-  );
+  on public.profiles for select using (public.is_manager());
 
--- A user may update their own row but MUST NOT change their own role or tier
--- (those are set only by the set_user_role RPC / the server).
-create policy "profiles are updatable by owner"
-  on public.profiles for update using (auth.uid() = id)
-  with check (
-    auth.uid() = id
-    and role = (select role from public.profiles where id = auth.uid())
-    and tier = (select tier from public.profiles where id = auth.uid())
-  );
+-- Role/tier are changed ONLY through the set_user_role RPC and the server, so
+-- there is deliberately no direct UPDATE policy for users (a self-update policy
+-- that sub-selects profiles would recurse; leaving it out is simpler and safer).
 
 -- Auto-create a profile row when a new auth user is created (role defaults to
 -- 'user'; the very first Owner is set once by hand — see "User roles").
