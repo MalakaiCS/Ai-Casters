@@ -28,7 +28,7 @@ jobs:
       - name: Install app + build tooling
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[ui,capture,vision,ai,voice,obs,hotkeys,diagnostics]" pyinstaller
+          pip install -e ".[ui,capture,vision,ai,voice,obs,hotkeys,diagnostics]" pyinstaller youtube-transcript-api
 
       - name: Inject deployment defaults
         shell: pwsh

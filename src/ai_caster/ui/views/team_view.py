@@ -26,8 +26,10 @@ from PySide6.QtWidgets import (
 )
 
 from ai_caster.auth.client import AuthClient
+from ai_caster.auth.durations import DURATION_PRESETS
 from ai_caster.auth.roles import Role, assignable_roles, can_manage_roles, role_label
 from ai_caster.auth.team import TeamClient, TeamMember
+from ai_caster.licensing.models import SubscriptionTier
 
 
 class TeamView(QWidget):
@@ -35,6 +37,7 @@ class TeamView(QWidget):
 
     _members_ready = Signal(object)  # -> list[TeamMember] | Exception
     _set_done = Signal(object)  # -> str (message)
+    _tier_done = Signal(object)  # -> str (message)
 
     def __init__(self, auth: AuthClient, team: TeamClient) -> None:
         super().__init__()
@@ -65,6 +68,9 @@ class TeamView(QWidget):
         left.addWidget(self._list, stretch=1)
         body.addLayout(left, stretch=1)
 
+        right = QVBoxLayout()
+
+        # --- role ------------------------------------------------------- #
         edit = QGroupBox("Change role")
         edit_layout = QVBoxLayout(edit)
         self._who = QLabel("Select a member.")
@@ -83,14 +89,45 @@ class TeamView(QWidget):
         self._status.setWordWrap(True)
         self._status.setStyleSheet("color: #888;")
         edit_layout.addWidget(self._status)
-        edit_layout.addStretch(1)
-        body.addWidget(edit, stretch=1)
+        right.addWidget(edit)
+
+        # --- subscription tier ----------------------------------------- #
+        sub = QGroupBox("Subscription")
+        sub_layout = QVBoxLayout(sub)
+        tier_row = QHBoxLayout()
+        tier_row.addWidget(QLabel("Tier"))
+        self._tier_combo = QComboBox()
+        for tier in SubscriptionTier:
+            self._tier_combo.addItem(tier.value, tier.value)
+        tier_row.addWidget(self._tier_combo, stretch=1)
+        sub_layout.addLayout(tier_row)
+        dur_row = QHBoxLayout()
+        dur_row.addWidget(QLabel("Duration"))
+        self._duration_combo = QComboBox()
+        for preset in DURATION_PRESETS:
+            self._duration_combo.addItem(preset.label, preset.days)
+        self._duration_combo.setCurrentText("30 days")
+        dur_row.addWidget(self._duration_combo, stretch=1)
+        sub_layout.addLayout(dur_row)
+        self._tier_btn = QPushButton("Update subscription")
+        self._tier_btn.clicked.connect(self._on_apply_tier)
+        self._tier_btn.setEnabled(False)
+        sub_layout.addWidget(self._tier_btn)
+        self._tier_status = QLabel("")
+        self._tier_status.setWordWrap(True)
+        self._tier_status.setStyleSheet("color: #888;")
+        sub_layout.addWidget(self._tier_status)
+        right.addWidget(sub)
+        right.addStretch(1)
+
+        body.addLayout(right, stretch=1)
 
         root.addWidget(self._body, stretch=1)
         root.addStretch(0)
 
         self._members_ready.connect(self._on_members_ready)
         self._set_done.connect(self._on_set_done)
+        self._tier_done.connect(self._on_tier_done)
         self._apply_gate()
 
     # ------------------------------------------------------------------ #
@@ -157,17 +194,26 @@ class TeamView(QWidget):
             self._role_combo.clear()
             return
         member = self._members[row]
-        self._who.setText(f"{member.email}\nCurrent role: {role_label(member.role_enum)}")
+        self._who.setText(
+            f"{member.email}\nCurrent role: {role_label(member.role_enum)}"
+            f"\nSubscription: {member.tier_summary}"
+        )
         self._role_combo.clear()
         for role in assignable_roles(self._current_role()):
             self._role_combo.addItem(role_label(role), role.value)
         # Can't manage someone at or above your own rank.
-        manageable = self._role_combo.count() > 0 and member.user_id != self._self_id()
-        self._apply_btn.setEnabled(manageable)
+        manageable = member.user_id != self._self_id()
+        self._apply_btn.setEnabled(manageable and self._role_combo.count() > 0)
         if not manageable:
             self._status.setText("You can't change this member's role.")
         else:
             self._status.setText("")
+
+        # Tier can be changed for anyone a manager oversees (incl. themselves is
+        # blocked to avoid accidental self-lockout of a paid grant).
+        self._tier_btn.setEnabled(manageable)
+        self._select_combo_data(self._tier_combo, member.tier)
+        self._tier_status.setText("")
 
     def _self_id(self) -> str:
         account = self._auth.account
@@ -201,6 +247,49 @@ class TeamView(QWidget):
             self._status.setText(error)
             return
         self._status.setText("Role updated.")
+        self._load_members()
+
+    # -- tier ----------------------------------------------------------- #
+    @staticmethod
+    def _select_combo_data(combo: QComboBox, value: str) -> None:
+        for i in range(combo.count()):
+            if combo.itemData(i) == value:
+                combo.setCurrentIndex(i)
+                return
+
+    def _on_apply_tier(self) -> None:
+        from datetime import UTC, datetime, timedelta
+
+        row = self._list.currentRow()
+        if row < 0 or row >= len(self._members):
+            return
+        member = self._members[row]
+        tier = str(self._tier_combo.currentData() or "free")
+        days = self._duration_combo.currentData()  # int | None (None = lifetime)
+        expires_at = (
+            None if days is None else (datetime.now(UTC) + timedelta(days=int(days))).isoformat()
+        )
+        self._tier_btn.setEnabled(False)
+        window = "lifetime" if days is None else f"{days} day(s)"
+        self._tier_status.setText(f"Setting {member.email} to {tier} for {window}…")
+        token = self._auth.session.access_token if self._auth.session else ""
+        threading.Thread(
+            target=self._run_set_tier,
+            args=(member.user_id, tier, expires_at, token),
+            name="team-tier",
+            daemon=True,
+        ).start()
+
+    def _run_set_tier(self, user_id: str, tier: str, expires_at, token: str) -> None:  # noqa: ANN001
+        result = self._team.set_tier(user_id, tier, expires_at, token=token)
+        self._tier_done.emit(result.error if not result.ok else "")
+
+    def _on_tier_done(self, error: str) -> None:
+        self._tier_btn.setEnabled(True)
+        if error:
+            self._tier_status.setText(error)
+            return
+        self._tier_status.setText("Subscription updated.")
         self._load_members()
 
     # ------------------------------------------------------------------ #

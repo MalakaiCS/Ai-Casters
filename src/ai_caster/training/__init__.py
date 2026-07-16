@@ -31,6 +31,11 @@ from ai_caster.training.models import (
 )
 from ai_caster.training.pipeline import TrainingPipeline
 from ai_caster.training.transcribe import Transcriber, WhisperTranscriber
+from ai_caster.training.youtube import (
+    YouTubeTranscriptError,
+    extract_video_id,
+    fetch_youtube_transcript,
+)
 
 __all__ = [
     "POLICY",
@@ -45,6 +50,9 @@ __all__ = [
     "MediaSourceError",
     "Transcriber",
     "WhisperTranscriber",
+    "fetch_youtube_transcript",
+    "extract_video_id",
+    "YouTubeTranscriptError",
     "Authorization",
     "TranscriptSegment",
     "TrainingSource",

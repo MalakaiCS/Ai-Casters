@@ -29,7 +29,7 @@ datas = collect_data_files(
 # backends that ARE installed on the build box get bundled too. certifi is
 # imported lazily (in core.http) so name it explicitly — its PyInstaller hook
 # then bundles the CA bundle that HTTPS verification needs.
-hiddenimports = collect_submodules("ai_caster") + ["certifi"]
+hiddenimports = collect_submodules("ai_caster") + ["certifi", "youtube_transcript_api"]
 
 block_cipher = None
 

@@ -18,7 +18,14 @@ TOKEN = "user-token"
 
 _ROWS = [
     {"id": "u1", "email": "owner@x.com", "display_name": "Owner", "role": "owner"},
-    {"id": "u2", "email": "staff@x.com", "display_name": "", "role": "staff"},
+    {
+        "id": "u2",
+        "email": "staff@x.com",
+        "display_name": "",
+        "role": "staff",
+        "tier": "pro",
+        "tier_expires_at": "2027-01-01T00:00:00+00:00",
+    },
 ]
 
 
@@ -26,7 +33,7 @@ def test_members_from_rows_maps_fields():
     members = SupabaseTeamClient._members_from_rows(_ROWS)
     assert [m.email for m in members] == ["owner@x.com", "staff@x.com"]
     assert members[0].role_enum.value == "owner"
-    assert members[1].label.endswith("staff")
+    assert "staff" in members[1].label
 
 
 def test_members_from_rows_ignores_garbage():
@@ -64,6 +71,47 @@ def test_set_role_posts_to_rpc(monkeypatch):
     assert calls["payload"] == {"target_user": "u2", "new_role": "admin"}
 
 
+def test_members_parse_tier_and_expiry():
+    members = SupabaseTeamClient._members_from_rows(_ROWS)
+    assert members[0].tier == "free"  # default when absent
+    assert members[0].tier_summary == "free (lifetime)"
+    assert members[1].tier == "pro"
+    assert members[1].tier_summary == "pro (until 2027-01-01)"
+
+
+def test_set_tier_posts_to_rpc(monkeypatch):
+    calls = {}
+
+    def fake_post(url, payload=None, *, headers=None, timeout=8.0):
+        calls["url"] = url
+        calls["payload"] = payload
+        return {}
+
+    monkeypatch.setattr(team_mod, "post_json", fake_post)
+    result = SupabaseTeamClient(URL, KEY).set_tier(
+        "u2", "studio", "2027-01-01T00:00:00+00:00", token=TOKEN
+    )
+    assert result.ok
+    assert calls["url"].endswith("/rest/v1/rpc/set_user_tier")
+    assert calls["payload"] == {
+        "target_user": "u2",
+        "new_tier": "studio",
+        "expires_at": "2027-01-01T00:00:00+00:00",
+    }
+
+
+def test_set_tier_lifetime_passes_null_expiry(monkeypatch):
+    calls = {}
+
+    def fake_post(url, payload=None, *, headers=None, timeout=8.0):
+        calls["payload"] = payload
+        return {}
+
+    monkeypatch.setattr(team_mod, "post_json", fake_post)
+    SupabaseTeamClient(URL, KEY).set_tier("u2", "pro", None, token=TOKEN)
+    assert calls["payload"]["expires_at"] is None
+
+
 def test_set_role_forbidden_is_friendly(monkeypatch):
     def fake_post(url, payload=None, *, headers=None, timeout=8.0):
         raise HttpError("forbidden", status=403)
@@ -91,4 +139,4 @@ def test_factory_selects_supabase_or_null():
 
 def test_team_member_label_prefers_display_name():
     m = TeamMember("u", "e@x.com", "Kai", "admin")
-    assert m.label == "Kai — admin"
+    assert m.label.startswith("Kai — admin")

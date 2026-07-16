@@ -23,9 +23,11 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSlider,
@@ -49,6 +51,7 @@ class TrainingView(QWidget):
         self._settings = settings_manager
         self._dirs: list[str] = []
         self._media: list[str] = []
+        self._youtube: list[str] = []
         self._last_profile = None
 
         root = QVBoxLayout(self)
@@ -58,9 +61,10 @@ class TrainingView(QWidget):
 
         policy = QLabel(
             "Offline analysis of AUTHORIZED sources only. Recordings are transcribed "
-            "to text + timing (no voice is ever cloned), speakers are anonymized, and "
-            "third-party platform links (YouTube/Twitch/etc.) are refused. Learned "
-            "style only *suggests* settings for you to review."
+            "to text + timing and YouTube links use CAPTIONS only — no audio/video is "
+            "downloaded and no voice is ever captured or cloned. You must own or be "
+            "licensed to use every source. Speakers are anonymized; learned style only "
+            "*suggests* settings for you to review."
         )
         policy.setWordWrap(True)
         policy.setStyleSheet("color: #888;")
@@ -96,10 +100,13 @@ class TrainingView(QWidget):
         add_dir.clicked.connect(self._add_dir)
         add_media = QPushButton("Add recording(s)…")
         add_media.clicked.connect(self._add_media)
+        add_youtube = QPushButton("Add YouTube link…")
+        add_youtube.clicked.connect(self._add_youtube)
         clear = QPushButton("Clear")
         clear.clicked.connect(self._clear_sources)
         buttons.addWidget(add_dir)
         buttons.addWidget(add_media)
+        buttons.addWidget(add_youtube)
         buttons.addWidget(clear)
         buttons.addStretch(1)
         layout.addLayout(buttons)
@@ -217,46 +224,79 @@ class TrainingView(QWidget):
             self._media.append(path)
             self._sources.addItem(f"[recording] {path}")
 
+    def _add_youtube(self) -> None:
+        url, ok = QInputDialog.getText(
+            self, "Add YouTube link", "YouTube URL (captions only — no video is downloaded):"
+        )
+        if not ok or not url.strip():
+            return
+        # Explicit rights affirmation — captions are text you must be licensed to use.
+        confirm = QMessageBox.question(
+            self,
+            "Confirm you have the rights",
+            "This reads the video's CAPTIONS only (no audio/video is downloaded, no "
+            "voice is captured) to learn general pacing.\n\nConfirm you own this "
+            "content or are licensed / it's Creative Commons.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        self._youtube.append(url.strip())
+        self._sources.addItem(f"[youtube] {url.strip()}")
+
     def _clear_sources(self) -> None:
         self._dirs.clear()
         self._media.clear()
+        self._youtube.clear()
         self._sources.clear()
 
     # ------------------------------------------------------------------ #
     # Analysis (worker thread)
     # ------------------------------------------------------------------ #
     def _on_analyze(self) -> None:
-        if not self._dirs and not self._media:
-            self._results.setPlainText("Add at least one transcript folder or recording first.")
-            return
-        if self._media and not self._consent.text().strip():
+        if not self._dirs and not self._media and not self._youtube:
             self._results.setPlainText(
-                "Recordings need a consent/rights reference (that you own or are "
-                "licensed to use them). Enter one above."
+                "Add at least one transcript folder, recording, or YouTube link first."
+            )
+            return
+        if (self._media or self._youtube) and not self._consent.text().strip():
+            self._results.setPlainText(
+                "Recordings and YouTube links need a consent/rights reference (that "
+                "you own or are licensed to use them). Enter one above."
             )
             return
         self._analyze_btn.setEnabled(False)
         self._results.setPlainText("Analyzing… (transcribing recordings can take a while)")
-        args = (list(self._dirs), list(self._media), self._consent.text().strip())
+        args = (
+            list(self._dirs),
+            list(self._media),
+            list(self._youtube),
+            self._consent.text().strip(),
+        )
         threading.Thread(target=self._run_analysis, args=args, name="train", daemon=True).start()
 
-    def _run_analysis(self, dirs: list[str], media: list[str], consent: str) -> None:
+    def _run_analysis(
+        self, dirs: list[str], media: list[str], youtube: list[str], consent: str
+    ) -> None:
         try:
             from ai_caster.training.models import Authorization
             from ai_caster.training.pipeline import TrainingPipeline
 
             pipeline = TrainingPipeline()
+            auth = Authorization(
+                authorized=True, consent_reference=consent, note="Added via in-app training."
+            )
             for directory in dirs:
                 pipeline.add_directory(Path(directory), skip_unauthorized=True)
             if media:
                 from ai_caster.training.transcribe import WhisperTranscriber
 
-                auth = Authorization(
-                    authorized=True, consent_reference=consent, note="Added via in-app training."
-                )
                 transcriber = WhisperTranscriber()
                 for item in media:
                     pipeline.add_media(item, authorization=auth, transcriber=transcriber)
+            for link in youtube:
+                pipeline.add_youtube(link, authorization=auth)
 
             if not pipeline.sources:
                 self._analysis_done.emit(

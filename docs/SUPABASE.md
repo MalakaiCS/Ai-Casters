@@ -106,6 +106,7 @@ create table if not exists public.profiles (
   email text,
   display_name text,
   tier text not null default 'free',
+  tier_expires_at timestamptz,  -- null = perpetual/lifetime; else the tier lapses to free
   role text not null default 'user'
     check (role in ('owner','founder','admin','staff','partner','user')),
   created_at timestamptz not null default now()
@@ -238,6 +239,37 @@ end; $$;
 
 revoke all on function public.set_user_role(uuid, text) from public;
 grant execute on function public.set_user_role(uuid, text) to authenticated;
+```
+
+### Subscription tiers & duration
+
+Managers (Admin and above) can also set a member's **tier** and how long it lasts
+from **Team & Roles** — 1 day, 7/30/90 days, 1 year, or lifetime. A dated grant
+lapses back to `free` automatically (the app checks `tier_expires_at`; a null
+expiry is perpetual). This goes through its own security-definer RPC:
+
+```sql
+-- (the tier_expires_at column is already in the profiles table above; if you
+-- created profiles before adding it, run this once:)
+alter table public.profiles add column if not exists tier_expires_at timestamptz;
+
+create or replace function public.set_user_tier(
+  target_user uuid, new_tier text, expires_at timestamptz
+) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_manager() then
+    raise exception 'insufficient privileges' using errcode = '42501';
+  end if;
+  if new_tier not in ('free','pro','studio') then
+    raise exception 'invalid tier';
+  end if;
+  update public.profiles
+    set tier = new_tier, tier_expires_at = expires_at
+    where id = target_user;
+end; $$;
+
+revoke all on function public.set_user_tier(uuid, text, timestamptz) from public;
+grant execute on function public.set_user_tier(uuid, text, timestamptz) to authenticated;
 ```
 
 **Bootstrap the first Owner** (run once, after you've signed up your own account):

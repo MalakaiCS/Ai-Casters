@@ -233,12 +233,19 @@ clones a voice, never models an identifiable person, and only ever *suggests*
 settings for review.
 
 **In the app (Staff and above):** open **Train the AI**. Add authorized transcript
-folders and/or recordings you own (with a consent reference), click **Analyze**,
-and review the learned style. The **Tone & pacing** panel sets baseline excitement,
-the minimum gap between lines (when to hold back) and whether the play-by-play may
-interrupt — these apply to the live director as soon as you save. Transcribing
-recordings in-app needs the `training` extra (`faster-whisper`); transcript-folder
+folders, recordings you own, and/or **YouTube links** (with a consent reference),
+click **Analyze**, and review the learned style. The **Tone & pacing** panel sets
+baseline excitement, the minimum gap between lines (when to hold back) and whether
+the play-by-play may interrupt — these apply to the live director as soon as you
+save. Transcribing recordings and fetching YouTube captions in-app need the
+`training` extra (`faster-whisper` + `youtube-transcript-api`); transcript-folder
 training and the tone/pacing controls need nothing extra.
+
+> **YouTube links use captions only.** The app reads the video's existing caption
+> transcript (text + timing) — it never downloads audio/video and never captures a
+> voice, so the "no voice cloning" guarantee holds. You must own the content or be
+> licensed to use it (your own channel, or Creative-Commons material); the app asks
+> you to confirm this before adding a link.
 
 **From the CLI (any environment):**
 

@@ -31,20 +31,28 @@ class TeamMember:
     email: str
     display_name: str
     role: str
+    tier: str = "free"
+    tier_expires_at: str = ""  # ISO8601, or "" for a perpetual/lifetime grant
 
     @property
     def role_enum(self) -> Role:
         return Role.coerce(self.role)
 
     @property
+    def tier_summary(self) -> str:
+        if not self.tier_expires_at:
+            return f"{self.tier} (lifetime)"
+        return f"{self.tier} (until {self.tier_expires_at[:10]})"
+
+    @property
     def label(self) -> str:
         who = self.display_name or self.email or self.user_id
-        return f"{who} — {self.role_enum.value}"
+        return f"{who} — {self.role_enum.value} · {self.tier_summary}"
 
 
 @dataclass(frozen=True)
 class TeamResult:
-    """Outcome of a role change."""
+    """Outcome of a role/tier change."""
 
     ok: bool
     error: str = ""
@@ -52,7 +60,7 @@ class TeamResult:
 
 @runtime_checkable
 class TeamClient(Protocol):
-    """Lists members and changes their roles (Admin+ only, enforced server-side)."""
+    """Lists members and changes roles/tiers (Admin+ only, enforced server-side)."""
 
     @property
     def supported(self) -> bool: ...
@@ -60,6 +68,10 @@ class TeamClient(Protocol):
     def list_members(self, *, token: str) -> list[TeamMember]: ...
 
     def set_role(self, user_id: str, role: str, *, token: str) -> TeamResult: ...
+
+    def set_tier(
+        self, user_id: str, tier: str, expires_at: str | None, *, token: str
+    ) -> TeamResult: ...
 
 
 class NullTeamClient:
@@ -71,6 +83,11 @@ class NullTeamClient:
         return []
 
     def set_role(self, user_id: str, role: str, *, token: str) -> TeamResult:
+        return TeamResult(ok=False, error="Team management needs the cloud account service.")
+
+    def set_tier(
+        self, user_id: str, tier: str, expires_at: str | None, *, token: str
+    ) -> TeamResult:
         return TeamResult(ok=False, error="Team management needs the cloud account service.")
 
 
@@ -101,6 +118,8 @@ class SupabaseTeamClient:
                     email=str(row.get("email", "")),
                     display_name=str(row.get("display_name") or ""),
                     role=str(row.get("role") or "user"),
+                    tier=str(row.get("tier") or "free"),
+                    tier_expires_at=str(row.get("tier_expires_at") or ""),
                 )
             )
         return members
@@ -108,7 +127,8 @@ class SupabaseTeamClient:
     def list_members(self, *, token: str) -> list[TeamMember]:
         try:
             rows = get_json(
-                f"{self._rest}/profiles?select=id,email,display_name,role&order=role.asc",
+                f"{self._rest}/profiles"
+                "?select=id,email,display_name,role,tier,tier_expires_at&order=role.asc",
                 headers=self._headers(token),
                 timeout=self._timeout,
             )
@@ -130,6 +150,22 @@ class SupabaseTeamClient:
             if exc.status in (401, 403):
                 return TeamResult(ok=False, error="You're not allowed to set that role.")
             return TeamResult(ok=False, error=f"Role change failed ({exc.status or 'network'}).")
+        return TeamResult(ok=True)
+
+    def set_tier(
+        self, user_id: str, tier: str, expires_at: str | None, *, token: str
+    ) -> TeamResult:
+        try:
+            post_json(
+                f"{self._rest}/rpc/set_user_tier",
+                {"target_user": user_id, "new_tier": tier, "expires_at": expires_at},
+                headers=self._headers(token),
+                timeout=self._timeout,
+            )
+        except HttpError as exc:  # pragma: no cover - network failure path
+            if exc.status in (401, 403):
+                return TeamResult(ok=False, error="You're not allowed to change tiers.")
+            return TeamResult(ok=False, error=f"Tier change failed ({exc.status or 'network'}).")
         return TeamResult(ok=True)
 
 

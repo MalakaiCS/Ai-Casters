@@ -73,6 +73,44 @@ class TrainingPipeline:
         self._sources.append(parsed)
         return parsed
 
+    def add_youtube(
+        self,
+        url,
+        *,
+        authorization,
+        languages: tuple[str, ...] = ("en",),
+        source_id: str | None = None,
+    ):
+        """Add a YouTube video's **caption transcript** as an authorized source.
+
+        Fetches only the existing captions (text + timing) — no audio/video is
+        downloaded and no voice is captured — and folds them through the same
+        anonymization as every other source. Authorization is checked before any
+        network work, exactly like :meth:`add_media`.
+        """
+        from ai_caster.training.guardrails import anonymize_role, ensure_authorized
+        from ai_caster.training.models import TrainingSource
+        from ai_caster.training.youtube import extract_video_id, fetch_youtube_transcript
+
+        vid = extract_video_id(str(url))
+        ensure_authorized(TrainingSource(source_id or vid, authorization))
+
+        raw = fetch_youtube_transcript(str(url), languages=languages)
+        segments = [
+            type(seg)(role=anonymize_role(seg.role), text=seg.text, start=seg.start, end=seg.end)
+            for seg in raw
+            if seg.text.strip()
+        ]
+        source = TrainingSource(
+            source_id=source_id or vid,
+            authorization=authorization,
+            segments=segments,
+            language=languages[0] if languages else "en",
+        )
+        ensure_authorized(source)
+        self._sources.append(source)
+        return source
+
     def run(self) -> StyleProfile:
         """Analyse the gathered sources into a single aggregate style profile."""
         language = self._sources[0].language if self._sources else "en"

@@ -8,7 +8,7 @@ the account's registered devices. Both satisfy :class:`LicensingBackend`.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
 from ai_caster.core.http import HttpError, delete_json, get_json, post_json
@@ -144,7 +144,7 @@ class SupabaseLicensingBackend:
     def validate(self, account_id: str, device_id: str, *, token: str = "") -> License:
         try:
             rows = get_json(
-                f"{self._rest}/profiles?id=eq.{account_id}&select=tier",
+                f"{self._rest}/profiles?id=eq.{account_id}&select=tier,tier_expires_at",
                 headers=self._headers(token),
                 timeout=self._timeout,
             )
@@ -152,11 +152,22 @@ class SupabaseLicensingBackend:
             raise LicensingError(str(exc)) from exc
 
         tier = SubscriptionTier.FREE
+        expires_at: datetime | None = None
         if rows:
             try:
                 tier = SubscriptionTier(str(rows[0].get("tier", "free")))
             except ValueError:
                 tier = SubscriptionTier.FREE
+            raw_expiry = rows[0].get("tier_expires_at")
+            if raw_expiry:
+                try:
+                    expires_at = datetime.fromisoformat(str(raw_expiry).replace("Z", "+00:00"))
+                except ValueError:
+                    expires_at = None
+        # A lapsed paid grant falls back to FREE (the License also carries the
+        # expiry so the client can show it).
+        if expires_at is not None and datetime.now(UTC) >= expires_at:
+            tier = SubscriptionTier.FREE
 
         # Register / refresh this device (best effort; a failure never blocks use).
         try:
@@ -173,7 +184,9 @@ class SupabaseLicensingBackend:
         except HttpError as exc:  # pragma: no cover - best effort
             _log.debug("Device upsert skipped: %s", exc)
 
-        return License(account_id=account_id, tier=tier, device_id=device_id)
+        return License(
+            account_id=account_id, tier=tier, device_id=device_id, expires_at=expires_at
+        )
 
     def list_devices(self, account_id: str, *, token: str = "") -> list[Device]:
         try:

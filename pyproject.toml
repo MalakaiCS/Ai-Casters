@@ -74,7 +74,12 @@ diagnostics = ["psutil>=5.9"]
 # analyses text transcripts with no extra deps; this adds local speech-to-text
 # (faster-whisper) so authorized recordings can be transcribed to text + timing
 # for general pacing/vocabulary learning. No voice model is ever built.
-training = ["faster-whisper>=1.0"]
+training = [
+    "faster-whisper>=1.0",
+    # Fetches YouTube caption transcripts (text only) for the authorized
+    # "learn from a link" path — no audio/video is ever downloaded.
+    "youtube-transcript-api>=0.6",
+]
 
 dev = [
     "pytest>=8.0",
