@@ -175,13 +175,23 @@ monitor mix.
 
 ## 7. OBS integration (optional)
 
-1. In OBS: **Tools → WebSocket Server Settings** → enable, note the port
-   (default `4455`) and password.
-2. Install the `obs` extra.
-3. **Settings → Audio & OBS**: enable it, enter host/port/password, turn on
-   **auto-switch scenes**, and set the **live** and **replay** scene names. When a
-   replay is active the app switches to the replay scene and back to live when it
-   ends.
+Controlled from the **OBS Integration** panel in the **Voice, Audio & OBS** view.
+
+1. In OBS: **Tools → WebSocket Server Settings** → **Enable WebSocket server**, then
+   note the **Port** (default `4455`) and click **Show Connect Info** for the
+   **password**. (If you don't set a password in OBS, leave the app's password blank.)
+2. In the app's **OBS Integration** panel: tick **Enable OBS integration**, enter the
+   **host** (`127.0.0.1` if OBS is on the same PC), **port** and **password**, then
+   click **Connect**. The status line shows *connected* and the **current scene**;
+   any connection error (OBS closed, WebSocket off, wrong port/password) is shown
+   right there so you can fix it.
+3. Click **Refresh scenes** to pull your scene list, then pick the **Live scene** and
+   **Replay scene** from the dropdowns and tick **auto-switch scenes**. Now the app
+   switches to the replay scene while a replay is active and back to live when it
+   ends. **Save** persists everything for next launch.
+
+> If the panel says the OBS control library "isn't available in this build",
+> reinstall the latest version — the official installer now bundles it.
 
 ---
 

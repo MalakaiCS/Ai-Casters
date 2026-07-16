@@ -39,6 +39,50 @@ class OBSIntegration:
     def controller(self) -> OBSController:
         return self._controller
 
+    @property
+    def is_connected(self) -> bool:
+        return self._controller.is_connected
+
+    @property
+    def auto_switch(self) -> bool:
+        return self._auto_switch
+
+    def current_scene(self) -> str | None:
+        return self._controller.get_current_scene()
+
+    def scenes(self) -> list[str]:
+        return self._controller.list_scenes()
+
+    def set_scenes(self, live_scene: str, replay_scene: str) -> None:
+        self._live_scene = live_scene
+        self._replay_scene = replay_scene
+
+    def set_auto_switch(self, enabled: bool) -> None:
+        self._auto_switch = enabled
+
+    def reconfigure(
+        self,
+        controller: OBSController,
+        *,
+        auto_switch_scenes: bool | None = None,
+        live_scene: str | None = None,
+        replay_scene: str | None = None,
+    ) -> None:
+        """Swap in a freshly-built controller (e.g. after the operator edits the
+        host/port/password) and apply any scene/auto-switch changes. The old
+        controller is disconnected first."""
+        try:
+            self._controller.disconnect()
+        except Exception:  # noqa: BLE001 - best effort
+            _log.debug("Old OBS controller disconnect failed", exc_info=True)
+        self._controller = controller
+        if auto_switch_scenes is not None:
+            self._auto_switch = auto_switch_scenes
+        if live_scene is not None:
+            self._live_scene = live_scene
+        if replay_scene is not None:
+            self._replay_scene = replay_scene
+
     def _on_replay(self, event: ReplayStateChanged) -> None:
         if not self._auto_switch or not self._controller.is_connected:
             return

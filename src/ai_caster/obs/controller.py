@@ -28,6 +28,10 @@ class OBSController(Protocol):
 
     def set_scene(self, scene: str) -> None: ...
 
+    def get_current_scene(self) -> str | None: ...
+
+    def list_scenes(self) -> list[str]: ...
+
 
 class NullOBSController:
     """No-op controller that records actions (offline default / test double)."""
@@ -51,6 +55,12 @@ class NullOBSController:
         self.scenes_set.append(scene)
         self.current_scene = scene
 
+    def get_current_scene(self) -> str | None:
+        return self.current_scene
+
+    def list_scenes(self) -> list[str]:
+        return []
+
 
 class WebSocketOBSController:
     """Real OBS control over the OBS WebSocket (``obsws-python``)."""
@@ -60,23 +70,38 @@ class WebSocketOBSController:
         self._port = port
         self._password = password
         self._client = None
+        self.current_scene: str | None = None
 
     @property
     def is_connected(self) -> bool:
         return self._client is not None
+
+    @staticmethod
+    def sdk_available() -> bool:
+        import importlib.util
+
+        return importlib.util.find_spec("obsws_python") is not None
 
     def connect(self) -> None:
         try:
             import obsws_python  # type: ignore
         except ImportError as exc:  # pragma: no cover - only without the SDK
             raise RuntimeError(
-                "OBS integration requires obsws-python. Install OBS extras: "
-                'pip install "ai-esports-caster[obs]"'
+                "OBS integration requires the obsws-python package, which isn't "
+                "available in this build."
             ) from exc
+        # ReqClient connects and does the identify handshake on construction, so a
+        # bad port/password or a closed OBS raises right here — which is exactly
+        # what the UI wants to surface.
         self._client = obsws_python.ReqClient(
-            host=self._host, port=self._port, password=self._password
+            host=self._host, port=self._port, password=self._password, timeout=5
         )
-        _log.info("Connected to OBS at %s:%d", self._host, self._port)
+        # Prime the current scene so the UI has something to show immediately and
+        # so a successful handshake is confirmed by a real request.
+        self.current_scene = self.get_current_scene()
+        _log.info(
+            "Connected to OBS at %s:%d (scene=%s)", self._host, self._port, self.current_scene
+        )
 
     def disconnect(self) -> None:
         if self._client is not None:
@@ -90,3 +115,57 @@ class WebSocketOBSController:
         if self._client is None:
             return
         self._client.set_current_program_scene(scene)  # pragma: no cover - live OBS
+        self.current_scene = scene
+
+    def get_current_scene(self) -> str | None:
+        if self._client is None:
+            return None
+        try:  # pragma: no cover - live OBS
+            response = self._client.get_current_program_scene()
+        except Exception:  # noqa: BLE001 - never let an OBS hiccup crash the caller
+            _log.exception("Failed to read the current OBS scene")
+            return self.current_scene
+        scene = _scene_name(response)
+        if scene:
+            self.current_scene = scene
+        return scene
+
+    def list_scenes(self) -> list[str]:
+        if self._client is None:
+            return []
+        try:  # pragma: no cover - live OBS
+            response = self._client.get_scene_list()
+        except Exception:  # noqa: BLE001
+            _log.exception("Failed to list OBS scenes")
+            return []
+        return _scene_names(getattr(response, "scenes", None))
+
+
+def _scene_name(response: object) -> str | None:
+    """Read the current scene name across obsws-python / OBS version differences."""
+    for attr in ("current_program_scene_name", "scene_name", "currentProgramSceneName"):
+        value = getattr(response, attr, None)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _scene_names(scenes: object) -> list[str]:
+    """Extract scene names from a get_scene_list response's ``scenes`` field.
+
+    OBS returns newest-first; each entry is a dict with a ``sceneName`` key (or an
+    object with that attribute across library versions).
+    """
+    if not isinstance(scenes, list):
+        return []
+    names: list[str] = []
+    for entry in scenes:
+        name = None
+        if isinstance(entry, dict):
+            name = entry.get("sceneName") or entry.get("scene_name") or entry.get("name")
+        else:
+            name = getattr(entry, "sceneName", None) or getattr(entry, "scene_name", None)
+        if isinstance(name, str) and name:
+            names.append(name)
+    names.reverse()  # present top-to-bottom as OBS shows them
+    return names

@@ -49,7 +49,7 @@ from ai_caster.licensing.client import LicensingClient
 from ai_caster.licensing.factory import create_licensing_backend
 from ai_caster.match.engine import MatchStateEngine
 from ai_caster.match.state import MatchStateStore
-from ai_caster.obs.controller import NullOBSController, WebSocketOBSController
+from ai_caster.obs.factory import create_obs_controller
 from ai_caster.obs.integration import OBSIntegration
 from ai_caster.persistence.database import Database
 from ai_caster.persistence.repository import MatchRepository
@@ -207,18 +207,9 @@ class Application:
         self.voice = VoiceEngine(self.event_bus, settings.voice)
 
         # --- OBS integration (Module 16) ---------------------------------- #
-        obs_available = importlib.util.find_spec("obsws_python") is not None
-        if settings.audio_obs.enabled and obs_available:
-            controller = WebSocketOBSController(
-                host=settings.audio_obs.host,
-                port=settings.audio_obs.port,
-                password=settings.audio_obs.password,
-            )
-        else:
-            controller = NullOBSController()
         self.obs = OBSIntegration(
             self.event_bus,
-            controller,
+            create_obs_controller(settings.audio_obs),
             auto_switch_scenes=settings.audio_obs.auto_switch_scenes,
             live_scene=settings.audio_obs.live_scene,
             replay_scene=settings.audio_obs.replay_scene,

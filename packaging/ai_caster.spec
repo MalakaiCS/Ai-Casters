@@ -36,6 +36,11 @@ hiddenimports = (
     # native bits) explicitly or the frozen app can't play sound. sounddevice's
     # hook bundles the portaudio DLL; pyttsx3's SAPI5 driver needs comtypes.
     + ["sounddevice", "pyttsx3", "pyttsx3.drivers", "pyttsx3.drivers.sapi5", "comtypes"]
+    # OBS control is lazily imported (obs.controller.connect), so PyInstaller's
+    # static analysis can't see it — name it (and its websocket transport)
+    # explicitly, or the installed app can never connect to OBS.
+    + collect_submodules("obsws_python")
+    + ["websocket"]
 )
 
 block_cipher = None

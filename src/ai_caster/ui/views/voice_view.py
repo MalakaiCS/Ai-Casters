@@ -18,13 +18,16 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSlider,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
 from ai_caster.config.manager import SettingsManager
+from ai_caster.obs.factory import create_obs_controller, obs_sdk_available
 from ai_caster.obs.integration import OBSIntegration
 from ai_caster.voice.catalog import (
     CUSTOM_LABEL,
@@ -280,19 +283,9 @@ class VoiceView(QWidget):
         columns.addWidget(self._analyst)
         root.addLayout(columns)
 
-        obs_box = QGroupBox("OBS Integration")
-        obs_layout = QVBoxLayout(obs_box)
-        self._obs_label = QLabel(self._obs_summary())
-        self._obs_label.setWordWrap(True)
-        obs_layout.addWidget(self._obs_label)
-        root.addWidget(obs_box)
+        self._obs_panel = _OBSPanel(obs, settings_manager)
+        root.addWidget(self._obs_panel)
         root.addStretch(1)
-
-    def _obs_summary(self, scene: str | None = None) -> str:
-        controller = self._obs.controller
-        connected = "connected" if controller.is_connected else "offline"
-        current = scene or getattr(controller, "current_scene", None) or "—"
-        return f"OBS: {connected}    current scene: {current}"
 
     # -- slots (Qt thread) ---------------------------------------------- #
     def on_commentary_line(self, line) -> None:  # noqa: ANN001 - Qt slot payload
@@ -302,4 +295,173 @@ class VoiceView(QWidget):
     def on_replay_state(self, state, transition: str) -> None:  # noqa: ANN001 - Qt slot
         self._pbp.refresh()
         self._analyst.refresh()
-        self._obs_label.setText(self._obs_summary())
+        self._obs_panel.refresh_status()
+
+
+class _OBSPanel(QGroupBox):
+    """Connect to and control OBS: enable, credentials, connect/test, scenes.
+
+    Replaces the old read-only status label. A user can now turn integration on,
+    point it at their OBS WebSocket, connect, see the current scene and scene list,
+    and choose which scenes to switch to for live/replay — all from the app.
+    """
+
+    def __init__(self, obs: OBSIntegration, settings_manager: SettingsManager) -> None:
+        super().__init__("OBS Integration")
+        self._obs = obs
+        self._manager = settings_manager
+
+        layout = QVBoxLayout(self)
+
+        if not obs_sdk_available():
+            warn = QLabel(
+                "The OBS control library isn't available in this build, so OBS "
+                "can't be reached. Reinstall the app to enable OBS integration."
+            )
+            warn.setWordWrap(True)
+            warn.setStyleSheet("color: #cc6666;")
+            layout.addWidget(warn)
+
+        obs_settings = settings_manager.settings.audio_obs
+        form = QFormLayout()
+        self._enabled = QCheckBox("Enable OBS integration")
+        self._enabled.setChecked(obs_settings.enabled)
+        form.addRow("", self._enabled)
+
+        self._host = QLineEdit(obs_settings.host)
+        form.addRow("Host:", self._host)
+        self._port = QSpinBox()
+        self._port.setRange(1, 65535)
+        self._port.setValue(obs_settings.port)
+        form.addRow("Port:", self._port)
+        self._password = QLineEdit(obs_settings.password)
+        self._password.setEchoMode(QLineEdit.EchoMode.Password)
+        self._password.setPlaceholderText("From OBS → Tools → WebSocket Server Settings")
+        form.addRow("Password:", self._password)
+
+        self._auto_switch = QCheckBox("Auto-switch scenes on replay start/end")
+        self._auto_switch.setChecked(obs_settings.auto_switch_scenes)
+        form.addRow("", self._auto_switch)
+
+        self._live_scene = QComboBox()
+        self._live_scene.setEditable(True)
+        self._replay_scene = QComboBox()
+        self._replay_scene.setEditable(True)
+        self._set_scene_options([obs_settings.live_scene, obs_settings.replay_scene])
+        self._live_scene.setCurrentText(obs_settings.live_scene)
+        self._replay_scene.setCurrentText(obs_settings.replay_scene)
+        form.addRow("Live scene:", self._live_scene)
+        form.addRow("Replay scene:", self._replay_scene)
+        layout.addLayout(form)
+
+        buttons = QHBoxLayout()
+        self._connect_btn = QPushButton("Connect")
+        self._connect_btn.clicked.connect(self._on_connect)
+        self._disconnect_btn = QPushButton("Disconnect")
+        self._disconnect_btn.clicked.connect(self._on_disconnect)
+        self._refresh_btn = QPushButton("Refresh scenes")
+        self._refresh_btn.clicked.connect(self._on_refresh)
+        self._save_btn = QPushButton("Save")
+        self._save_btn.clicked.connect(self._on_save)
+        for btn in (self._connect_btn, self._disconnect_btn, self._refresh_btn, self._save_btn):
+            buttons.addWidget(btn)
+        buttons.addStretch(1)
+        layout.addLayout(buttons)
+
+        self._status = QLabel()
+        self._status.setWordWrap(True)
+        layout.addWidget(self._status)
+
+        self.refresh_status()
+
+    # -- helpers --------------------------------------------------------- #
+    def _set_scene_options(self, scenes: list[str]) -> None:
+        for combo in (self._live_scene, self._replay_scene):
+            current = combo.currentText()
+            combo.clear()
+            for scene in dict.fromkeys(s for s in scenes if s):  # de-dupe, keep order
+                combo.addItem(scene)
+            if current:
+                combo.setCurrentText(current)
+
+    def _collect_settings(self):  # noqa: ANN202 - returns a copied AppSettings
+        settings = self._manager.settings.model_copy(deep=True)
+        obs = settings.audio_obs
+        obs.enabled = self._enabled.isChecked()
+        obs.host = self._host.text().strip() or "127.0.0.1"
+        obs.port = self._port.value()
+        obs.password = self._password.text()
+        obs.auto_switch_scenes = self._auto_switch.isChecked()
+        obs.live_scene = self._live_scene.currentText().strip() or "Live"
+        obs.replay_scene = self._replay_scene.currentText().strip() or "Replay"
+        return settings
+
+    def _persist(self):  # noqa: ANN202
+        settings = self._collect_settings()
+        self._manager.update(settings, section="audio_obs")
+        return settings.audio_obs
+
+    # -- button handlers ------------------------------------------------- #
+    def _on_save(self) -> None:
+        obs = self._persist()
+        self._obs.set_auto_switch(obs.auto_switch_scenes)
+        self._obs.set_scenes(obs.live_scene, obs.replay_scene)
+        self.refresh_status("Saved.")
+
+    def _on_connect(self) -> None:
+        obs = self._persist()
+        if not obs.enabled:
+            self.refresh_status("Enable OBS integration first, then Connect.")
+            return
+        controller = create_obs_controller(obs)
+        self._obs.reconfigure(
+            controller,
+            auto_switch_scenes=obs.auto_switch_scenes,
+            live_scene=obs.live_scene,
+            replay_scene=obs.replay_scene,
+        )
+        try:
+            controller.connect()
+        except Exception as exc:  # noqa: BLE001 - surface the real connection error
+            self.refresh_status(f"Could not connect: {exc}")
+            QMessageBox.warning(
+                self,
+                "OBS connection failed",
+                "Couldn't reach OBS. Check that OBS is open, its WebSocket server is "
+                "enabled (Tools → WebSocket Server Settings), and the port/password "
+                f"match.\n\n{exc}",
+            )
+            return
+        self._load_scenes_from_obs()
+        self.refresh_status("Connected.")
+
+    def _on_disconnect(self) -> None:
+        self._obs.disconnect()
+        self.refresh_status("Disconnected.")
+
+    def _on_refresh(self) -> None:
+        if not self._obs.is_connected:
+            self.refresh_status("Connect to OBS first.")
+            return
+        self._load_scenes_from_obs()
+        self.refresh_status("Scenes refreshed.")
+
+    def _load_scenes_from_obs(self) -> None:
+        scenes = self._obs.scenes()
+        if scenes:
+            self._set_scene_options(scenes)
+
+    # -- status ---------------------------------------------------------- #
+    def refresh_status(self, note: str = "") -> None:
+        connected = self._obs.is_connected
+        current = self._obs.current_scene() or "—"
+        state = "connected" if connected else "offline"
+        colour = "#44cc66" if connected else "#cc9944"
+        message = f"OBS: {state}    current scene: {current}"
+        if note:
+            message = f"{message}    ({note})"
+        self._status.setText(message)
+        self._status.setStyleSheet(f"color: {colour};")
+        self._connect_btn.setEnabled(not connected)
+        self._disconnect_btn.setEnabled(connected)
+        self._refresh_btn.setEnabled(connected)
