@@ -35,6 +35,7 @@ from ai_caster.voice.catalog import (
 )
 from ai_caster.voice.channel import VoiceChannel
 from ai_caster.voice.engine import VoiceEngine
+from ai_caster.voice.factory import create_default_output_sink, sound_output_available
 
 
 class _ChannelPanel(QGroupBox):
@@ -156,12 +157,53 @@ class _VoiceConfigPanel(QGroupBox):
         self._apply.clicked.connect(self._on_apply)
         form.addRow("", self._apply)
 
+        self._default_out = QPushButton("Play through default headset / speakers")
+        self._default_out.setToolTip(
+            "Route both casters and the monitor mix to your default Windows output "
+            "device — no device names to configure."
+        )
+        self._default_out.clicked.connect(self._on_default_output)
+        form.addRow("", self._default_out)
+
         self._status = QLabel("")
         self._status.setWordWrap(True)
         self._status.setStyleSheet("color: #888;")
         form.addRow("", self._status)
 
         self._sync_engine_fields()
+
+    def _on_default_output(self) -> None:
+        if not sound_output_available():
+            self._status.setText(
+                "Audio playback isn't available in this build (the sounddevice "
+                "component is missing). Reinstall the latest version."
+            )
+            return
+        rate = self._settings.settings.voice.sample_rate
+        # Swap all three outputs to the OS default device, live.
+        self._voice.play_by_play.set_sink(create_default_output_sink(rate, "play_by_play"))
+        self._voice.analyst.set_sink(create_default_output_sink(rate, "analyst"))
+        self._voice.monitor.set_sink(create_default_output_sink(rate, "monitor"))
+        # Persist "default" so it sticks across restarts.
+        current = self._settings.settings
+        voice = current.voice.model_copy(
+            update={
+                "monitor_device": "default",
+                "play_by_play": current.voice.play_by_play.model_copy(
+                    update={"output_device": "default"}
+                ),
+                "analyst": current.voice.analyst.model_copy(update={"output_device": "default"}),
+            }
+        )
+        self._settings.update(current.model_copy(update={"voice": voice}), section="voice")
+        engine = self._settings.settings.voice.tts_engine
+        hint = (
+            " Tip: set the engine to ElevenLabs or System for real speech "
+            "(Synthetic only plays a test tone)."
+            if engine == "synthetic"
+            else ""
+        )
+        self._status.setText("Now playing through your default output device." + hint)
 
     @staticmethod
     def _select_data(combo: QComboBox, value: str) -> None:

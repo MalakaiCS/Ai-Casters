@@ -83,22 +83,21 @@ press **Go live**.
 
 ## 4. Connect Counter-Strike 2 (GSI)
 
-1. Open **Settings → GSI** and note the **port** (default `3111`) and the
-   generated **auth token**.
-2. Generate the game config:
+1. Open **Settings → GSI**.
+2. Click **Install GSI config into CS2** — it finds your CS2 folder and drops the
+   config in automatically. (If it can't find CS2, use **Export config to a
+   folder…** and copy the file into
+   `.../Counter-Strike Global Offensive/game/csgo/cfg/` yourself.)
+3. **Fully restart CS2** (quit the game, not just the map) and load into a match as
+   an **observer**. The **Live GSI** view and the Dashboard's *GSI feed* indicator
+   update in real time.
 
-   ```bash
-   ai-caster gsi-config --out gamestate_integration_ai_caster.cfg
-   ```
+> **Using a HUD manager (Lexogrine, etc.)?** No conflict — CS2 sends GSI to *every*
+> `gamestate_integration_*.cfg` at once, so ours runs alongside theirs. If the feed
+> still says "waiting", it almost always means our config isn't in the cfg folder
+> yet or CS2 wasn't fully restarted after installing it.
 
-3. Copy the file into your CS2 config folder:
-
-   ```
-   .../Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/cfg/
-   ```
-
-4. Start CS2 and load into a match as an **observer**. The **Live GSI** view and
-   the Dashboard's *GSI feed* indicator update in real time.
+The CLI equivalent is `ai-caster gsi-config --out gamestate_integration_ai_caster.cfg`.
 
 The match engine, statistics and event detection begin working from GSI alone —
 no video needed.
@@ -129,6 +128,11 @@ monitor mix.
 
 - **Offline default:** the synthetic TTS and null sinks produce/route audio with
   no hardware — good for testing the whole path.
+- **Just play it through my headset:** in the **Voice, Audio & OBS** view click
+  **Play through default headset / speakers** — both casters and the monitor mix
+  route to your default Windows output, no device names to configure. (Pair it
+  with a real voice: set the engine to **System** for offline speech or
+  **ElevenLabs** for production voices — *Synthetic* only plays a test tone.)
 - **Real OS speech:** install the `voice` extra, then in **Settings → Voice** set
   `tts_engine` to `system` (pyttsx3) and assign each channel an `output_device`
   (and a `monitor_device` for your headphones). A common routing is

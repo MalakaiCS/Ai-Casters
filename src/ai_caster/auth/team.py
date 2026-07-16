@@ -125,10 +125,12 @@ class SupabaseTeamClient:
         return members
 
     def list_members(self, *, token: str) -> list[TeamMember]:
+        # `select=*` (rather than naming columns) so an older profiles table that
+        # predates display_name / tier_expires_at doesn't 400 — missing columns
+        # just fall back to defaults in _members_from_rows.
         try:
             rows = get_json(
-                f"{self._rest}/profiles"
-                "?select=id,email,display_name,role,tier,tier_expires_at&order=role.asc",
+                f"{self._rest}/profiles?select=*&order=role.asc",
                 headers=self._headers(token),
                 timeout=self._timeout,
             )

@@ -29,7 +29,14 @@ datas = collect_data_files(
 # backends that ARE installed on the build box get bundled too. certifi is
 # imported lazily (in core.http) so name it explicitly — its PyInstaller hook
 # then bundles the CA bundle that HTTPS verification needs.
-hiddenimports = collect_submodules("ai_caster") + ["certifi", "youtube_transcript_api"]
+hiddenimports = (
+    collect_submodules("ai_caster")
+    + ["certifi", "youtube_transcript_api"]
+    # Audio output + offline speech are lazily imported, so name them (and their
+    # native bits) explicitly or the frozen app can't play sound. sounddevice's
+    # hook bundles the portaudio DLL; pyttsx3's SAPI5 driver needs comtypes.
+    + ["sounddevice", "pyttsx3", "pyttsx3.drivers", "pyttsx3.drivers.sapi5", "comtypes"]
+)
 
 block_cipher = None
 

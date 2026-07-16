@@ -92,6 +92,18 @@ class VoiceChannel:
     def voice_id(self) -> str:
         return self._voice_id
 
+    def set_sink(self, sink: AudioSink) -> None:
+        """Swap the output sink live (e.g. route to the default output device)."""
+        old = self._sink
+        if self.is_running:
+            sink.open()
+        self._sink = sink
+        if old is not None and old is not sink:
+            try:
+                old.close()
+            except Exception:  # noqa: BLE001 - best effort
+                pass
+
     # ------------------------------------------------------------------ #
     def start(self) -> None:
         if self.is_running:

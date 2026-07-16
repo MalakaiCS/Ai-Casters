@@ -143,8 +143,9 @@ class SupabaseLicensingBackend:
 
     def validate(self, account_id: str, device_id: str, *, token: str = "") -> License:
         try:
+            # select=* so a profiles table without tier_expires_at doesn't 400.
             rows = get_json(
-                f"{self._rest}/profiles?id=eq.{account_id}&select=tier,tier_expires_at",
+                f"{self._rest}/profiles?id=eq.{account_id}&select=*",
                 headers=self._headers(token),
                 timeout=self._timeout,
             )

@@ -45,7 +45,26 @@ def create_tts(settings: VoiceSettings) -> TTSEngine:
 
 def create_output_sink(device: str, sample_rate: int, name: str) -> AudioSink:
     """A real device sink when a device is named and sounddevice is present, else
-    the offline null sink."""
+    the offline null sink.
+
+    A ``device`` of ``"default"`` routes to the OS default output (headset/
+    speakers) without needing a device name — the one-click "play through default
+    output" path.
+    """
+    if device == "default" and _available("sounddevice"):
+        return SoundDeviceSink(device="", sample_rate=sample_rate, name=name)
     if device and _available("sounddevice"):
         return SoundDeviceSink(device=device, sample_rate=sample_rate, name=name)
     return NullSink(name=name)
+
+
+def create_default_output_sink(sample_rate: int, name: str) -> AudioSink:
+    """A sink that plays to the OS default output device (or Null if unavailable)."""
+    if _available("sounddevice"):
+        return SoundDeviceSink(device="", sample_rate=sample_rate, name=name)
+    return NullSink(name=name)
+
+
+def sound_output_available() -> bool:
+    """Whether real device playback is possible (the ``voice`` extra is present)."""
+    return _available("sounddevice")

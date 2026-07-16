@@ -28,6 +28,20 @@ class MonitorMixer:
     def set_volume(self, volume: float) -> None:
         self._volume = volume
 
+    def set_sink(self, sink: AudioSink) -> None:
+        """Swap the monitor's output sink live."""
+        old = self._sink
+        self._sink = sink
+        try:
+            sink.open()
+        except Exception:  # noqa: BLE001 - opening is best effort
+            pass
+        if old is not None and old is not sink:
+            try:
+                old.close()
+            except Exception:  # noqa: BLE001 - best effort
+                pass
+
     def open(self) -> None:
         self._sink.open()
 
