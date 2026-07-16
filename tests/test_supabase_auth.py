@@ -48,6 +48,14 @@ class _FakeTransport:
 
 
 # --- pure helpers ---------------------------------------------------------- #
+def test_url_and_key_whitespace_is_stripped():
+    # A trailing newline/space (common in pasted CI secrets) must not reach the
+    # hostname, or DNS fails with getaddrinfo.
+    b = SupabaseAuthBackend("https://demo.supabase.co\n ", "  anon-key\n")
+    assert b._auth == "https://demo.supabase.co/auth/v1"
+    assert b._anon_key == "anon-key"
+
+
 def test_headers_include_apikey_and_bearer():
     b = _backend()
     headers = b._headers()

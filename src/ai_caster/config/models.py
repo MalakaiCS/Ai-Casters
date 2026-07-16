@@ -287,6 +287,13 @@ class AccountSettings(_Section):
     remember: bool = Field(default=True, description="Persist the session across restarts.")
     auto_login: bool = Field(default=True, description="Restore a saved session on startup.")
 
+    @field_validator("supabase_url", "supabase_anon_key", "server_url")
+    @classmethod
+    def _strip_whitespace(cls, value: str) -> str:
+        # A trailing newline/space (easy to introduce when pasting into a CI
+        # secret) otherwise corrupts the hostname and fails DNS resolution.
+        return value.strip()
+
 
 class LicensingSettings(_Section):
     """Licensing client settings (Module 4, M8). No payment processing yet.

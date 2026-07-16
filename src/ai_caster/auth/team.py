@@ -80,8 +80,8 @@ class SupabaseTeamClient:
     supported = True
 
     def __init__(self, url: str, anon_key: str, *, timeout: float = 8.0) -> None:
-        self._rest = url.rstrip("/") + "/rest/v1"
-        self._anon_key = anon_key
+        self._rest = url.strip().rstrip("/") + "/rest/v1"
+        self._anon_key = anon_key.strip()
         self._timeout = timeout
 
     def _headers(self, token: str) -> dict[str, str]:

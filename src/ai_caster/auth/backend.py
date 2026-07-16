@@ -225,10 +225,13 @@ class SupabaseAuthBackend:
     name = "supabase"
 
     def __init__(self, url: str, anon_key: str, *, timeout: float = 20.0) -> None:
-        base = url.rstrip("/")
+        # Strip stray whitespace/newlines: a trailing newline in a pasted URL/key
+        # (common in CI secrets) otherwise ends up in the hostname and fails DNS
+        # with "getaddrinfo failed".
+        base = url.strip().rstrip("/")
         self._auth = base + "/auth/v1"
         self._rest = base + "/rest/v1"
-        self._anon_key = anon_key
+        self._anon_key = anon_key.strip()
         self._timeout = timeout
 
     # -- pure helpers --------------------------------------------------- #
