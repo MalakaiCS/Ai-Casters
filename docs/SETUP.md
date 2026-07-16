@@ -186,12 +186,28 @@ Controlled from the **OBS Integration** panel in the **Voice, Audio & OBS** view
    any connection error (OBS closed, WebSocket off, wrong port/password) is shown
    right there so you can fix it.
 3. Click **Refresh scenes** to pull your scene list, then pick the **Live scene** and
-   **Replay scene** from the dropdowns and tick **auto-switch scenes**. Now the app
-   switches to the replay scene while a replay is active and back to live when it
-   ends. **Save** persists everything for next launch.
+   **Replay scene** from the dropdowns. Two independent modes:
+   - **Auto-switch scenes** — *the app drives OBS*: it switches to the replay scene
+     while a replay is active and back to live when it ends.
+   - **Recognise the replay scene** — *the app reads OBS*: if your **HUD manager**
+     (Lexogrine, etc.) is the one switching OBS to a replay scene, tick this and set
+     **Replay scene** to that scene's name. The app watches OBS's current scene and,
+     while it's on the replay scene, treats the broadcast as a replay so the casters
+     never describe it as live. Leave auto-switch **off** when the HUD is driving.
+   **Save** persists everything for next launch.
 
 > If the panel says the OBS control library "isn't available in this build",
 > reinstall the latest version — the official installer now bundles it.
+
+### What the casters understand about sides
+
+The AI knows how CS2 decides starting sides and will set the stage correctly:
+
+- **Knife round** — detected automatically (everyone holding only knives). The desk
+  calls it out and notes that **the winner picks which side to start**.
+- **Best-of-1** — the casters note the **knife round decides sides**.
+- **Best-of-3 / Best-of-5** — they note that **the team that didn't pick the map
+  chooses which side to start**, using the series format reported by GSI.
 
 ---
 

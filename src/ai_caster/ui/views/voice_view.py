@@ -256,7 +256,11 @@ class VoiceView(QWidget):
     """Voice configuration, live voice-channel controls and OBS status."""
 
     def __init__(
-        self, voice: VoiceEngine, obs: OBSIntegration, settings_manager: SettingsManager
+        self,
+        voice: VoiceEngine,
+        obs: OBSIntegration,
+        settings_manager: SettingsManager,
+        scene_watcher=None,  # noqa: ANN001 - OBSSceneWatcher | None
     ) -> None:
         super().__init__()
         self._voice = voice
@@ -283,7 +287,7 @@ class VoiceView(QWidget):
         columns.addWidget(self._analyst)
         root.addLayout(columns)
 
-        self._obs_panel = _OBSPanel(obs, settings_manager)
+        self._obs_panel = _OBSPanel(obs, settings_manager, scene_watcher)
         root.addWidget(self._obs_panel)
         root.addStretch(1)
 
@@ -306,10 +310,16 @@ class _OBSPanel(QGroupBox):
     and choose which scenes to switch to for live/replay — all from the app.
     """
 
-    def __init__(self, obs: OBSIntegration, settings_manager: SettingsManager) -> None:
+    def __init__(
+        self,
+        obs: OBSIntegration,
+        settings_manager: SettingsManager,
+        scene_watcher=None,  # noqa: ANN001 - OBSSceneWatcher | None
+    ) -> None:
         super().__init__("OBS Integration")
         self._obs = obs
         self._manager = settings_manager
+        self._watcher = scene_watcher
 
         layout = QVBoxLayout(self)
 
@@ -342,6 +352,17 @@ class _OBSPanel(QGroupBox):
         self._auto_switch = QCheckBox("Auto-switch scenes on replay start/end")
         self._auto_switch.setChecked(obs_settings.auto_switch_scenes)
         form.addRow("", self._auto_switch)
+
+        self._detect_replay = QCheckBox(
+            "Recognise the replay scene (my HUD manager switches scenes)"
+        )
+        self._detect_replay.setToolTip(
+            "When your HUD manager switches OBS to the replay scene below, the app "
+            "treats it as a replay so the casters never call it as live. Leave "
+            "auto-switch off if the HUD is the one changing scenes."
+        )
+        self._detect_replay.setChecked(obs_settings.detect_replay_from_scene)
+        form.addRow("", self._detect_replay)
 
         self._live_scene = QComboBox()
         self._live_scene.setEditable(True)
@@ -392,6 +413,7 @@ class _OBSPanel(QGroupBox):
         obs.port = self._port.value()
         obs.password = self._password.text()
         obs.auto_switch_scenes = self._auto_switch.isChecked()
+        obs.detect_replay_from_scene = self._detect_replay.isChecked()
         obs.live_scene = self._live_scene.currentText().strip() or "Live"
         obs.replay_scene = self._replay_scene.currentText().strip() or "Replay"
         return settings
@@ -406,7 +428,19 @@ class _OBSPanel(QGroupBox):
         obs = self._persist()
         self._obs.set_auto_switch(obs.auto_switch_scenes)
         self._obs.set_scenes(obs.live_scene, obs.replay_scene)
+        self._apply_scene_watcher(obs)
         self.refresh_status("Saved.")
+
+    def _apply_scene_watcher(self, obs) -> None:  # noqa: ANN001 - OBSSettings
+        """Turn replay-scene recognition on/off to match the saved settings."""
+        if self._watcher is None:
+            return
+        self._watcher.set_replay_scene(obs.replay_scene)
+        self._watcher.set_enabled(obs.detect_replay_from_scene)
+        if obs.detect_replay_from_scene:
+            self._watcher.start()
+        else:
+            self._watcher.dispose()
 
     def _on_connect(self) -> None:
         obs = self._persist()
@@ -433,6 +467,7 @@ class _OBSPanel(QGroupBox):
             )
             return
         self._load_scenes_from_obs()
+        self._apply_scene_watcher(obs)
         self.refresh_status("Connected.")
 
     def _on_disconnect(self) -> None:

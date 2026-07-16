@@ -131,6 +131,18 @@ class OBSSettings(_Section):
     )
     live_scene: str = Field(default="Live", description="OBS scene name for live play.")
     replay_scene: str = Field(default="Replay", description="OBS scene name during replays.")
+    detect_replay_from_scene: bool = Field(
+        default=False,
+        description="Treat OBS being on the replay scene as a replay (for HUD "
+        "managers that switch scenes themselves). The casters then never describe "
+        "the replay as live.",
+    )
+    scene_poll_seconds: float = Field(
+        default=0.5,
+        ge=0.1,
+        le=5.0,
+        description="How often to read OBS's current scene for replay detection.",
+    )
 
 
 class ReplaySettings(_Section):

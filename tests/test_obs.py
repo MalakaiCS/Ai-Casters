@@ -188,3 +188,69 @@ def test_reconfigure_swaps_controller_and_disconnects_old():
     bus.publish(ReplayStateChanged(state=ReplayState(active=True), transition="started"))
     assert new.current_scene == "R"
     integration.dispose()
+
+
+# --- replay-scene recognition (OBS as an input) ---------------------------- #
+from ai_caster.obs.scene_watcher import OBSSceneWatcher  # noqa: E402
+
+
+def _watcher(bus, scene_box, **kwargs):
+    kwargs.setdefault("replay_scene", "Replay")
+    kwargs.setdefault("enabled", True)
+    return OBSSceneWatcher(bus, lambda: scene_box[0], **kwargs)
+
+
+def test_scene_watcher_emits_started_when_entering_replay_scene():
+    bus = EventBus()
+    box = ["Live"]
+    watcher = _watcher(bus, box)
+    assert watcher.evaluate("Live") is None  # not the replay scene
+    event = watcher.evaluate("Replay")
+    assert event is not None and event.transition == "started"
+    assert event.state.active is True
+    assert watcher.is_active
+
+
+def test_scene_watcher_emits_ended_when_leaving_replay_scene():
+    watcher = _watcher(EventBus(), ["Replay"])
+    watcher.evaluate("Replay")  # started
+    event = watcher.evaluate("Live")
+    assert event is not None and event.transition == "ended"
+    assert event.state.active is False
+
+
+def test_scene_watcher_no_event_when_scene_unchanged():
+    watcher = _watcher(EventBus(), ["Replay"])
+    assert watcher.evaluate("Replay").transition == "started"
+    assert watcher.evaluate("Replay") is None  # still on replay -> no repeat
+
+
+def test_scene_watcher_disabled_never_activates():
+    watcher = _watcher(EventBus(), ["Replay"], enabled=False)
+    assert watcher.evaluate("Replay") is None
+    assert not watcher.is_active
+
+
+def test_scene_watcher_publishes_on_poll():
+    bus = EventBus()
+    from ai_caster.replay.events import ReplayStateChanged
+
+    seen: list = []
+    bus.subscribe(ReplayStateChanged, seen.append)
+    box = ["Live"]
+    watcher = _watcher(bus, box)
+    watcher.poll_once()  # Live -> nothing
+    box[0] = "Replay"
+    watcher.poll_once()  # -> started
+    box[0] = "Live"
+    watcher.poll_once()  # -> ended
+    assert [e.transition for e in seen] == ["started", "ended"]
+
+
+def test_scene_watcher_respects_live_scene_rename():
+    watcher = _watcher(EventBus(), ["Instant Replay"], replay_scene="Instant Replay")
+    assert watcher.evaluate("Instant Replay").transition == "started"
+    # HUD renames the scene the app watches; the old one no longer counts.
+    watcher.set_replay_scene("REPLAY")
+    ended = watcher.evaluate("Instant Replay")
+    assert ended is not None and ended.transition == "ended"

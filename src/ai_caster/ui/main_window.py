@@ -104,7 +104,10 @@ class MainWindow(QMainWindow):
         self._director_view = DirectorView(application.director)
         self._commentary_view = CommentaryView(application.play_by_play, application.analyst)
         self._voice_view = VoiceView(
-            application.voice, application.obs, application.settings_manager
+            application.voice,
+            application.obs,
+            application.settings_manager,
+            application.obs_scene_watcher,
         )
         self._replay_view = ReplayView(
             application.replay_receiver, application.replay_server.address

@@ -29,6 +29,20 @@ class MatchEvent(Event):
 @dataclass(frozen=True)
 class MatchStarted(MatchEvent):
     map_name: str | None = None
+    # Series format from GSI: 1 = Bo1, 3 = Bo3, 5 = Bo5, 0 = unknown/single map.
+    best_of: int = 0
+
+
+@dataclass(frozen=True)
+class KnifeRound(MatchEvent):
+    """A knife round — played to decide which side each team starts on.
+
+    In a Bo1 the knife round itself decides sides; in a Bo3/Bo5 the side for a
+    picked map is normally chosen by the opposing team, but a knife round is still
+    played when sides weren't pre-selected. The winner elects to start CT or T.
+    """
+
+    pass
 
 
 @dataclass(frozen=True)

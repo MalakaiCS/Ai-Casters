@@ -173,6 +173,30 @@ def _slow_round_positioning(ctx: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _match_started(ctx: dict[str, Any]) -> list[str]:
+    map_name = ctx.get("map") or "this map"
+    best_of = ctx.get("best_of") or 0
+    side = ctx.get("side_selection")
+    lines = [
+        f"We are live on {map_name}. Here we go.",
+        f"Underway on {map_name} — let's get into it.",
+    ]
+    if best_of in (1, 3, 5):
+        lines.append(f"Best-of-{best_of} on {map_name}; {side}." if side else f"Best-of-{best_of}.")
+    if side:
+        lines.append(f"Worth remembering — {side} here on {map_name}.")
+    return lines
+
+
+def _knife_round(ctx: dict[str, Any]) -> list[str]:
+    rule = ctx.get("side_rule") or "the winner chooses which side to start on"
+    return [
+        f"Knife round first — {rule}, so this matters more than it looks.",
+        f"It's the knife round: {rule}. Every duel counts.",
+        f"Sides on the line in the knife round — {rule}.",
+    ]
+
+
 _BUILDERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "Kill": _kill,
     "ClutchStarted": _clutch_started,
@@ -198,10 +222,8 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
         "Here's the next one — watch the defaults.",
         "New round, clean slate; positions being taken.",
     ],
-    "MatchStarted": lambda c: [
-        f"We are live on {c.get('map') or 'this map'}. Here we go.",
-        f"Underway on {c.get('map') or 'this map'} — let's get into it.",
-    ],
+    "MatchStarted": _match_started,
+    "knife_round": _knife_round,
     "MatchEnded": lambda c: [
         (
             f"That's the match — the {c.get('winner') or 'winning'} side take it "

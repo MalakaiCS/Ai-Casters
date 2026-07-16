@@ -14,6 +14,7 @@ from ai_caster.detection.events import (
     ClutchStarted,
     ClutchWon,
     Kill,
+    KnifeRound,
     MatchEnded,
     MatchEvent,
     MatchStarted,
@@ -22,6 +23,15 @@ from ai_caster.detection.events import (
     ScoreChanged,
 )
 from ai_caster.director.directives import DirectivePriority, Speaker
+
+
+def side_selection_note(best_of: int) -> str:
+    """How the starting side is decided for this format — plain English for casters."""
+    if best_of == 1:
+        return "the knife round decides which side each team starts on"
+    if best_of >= 3:
+        return "the team that didn't pick this map chooses which side to start"
+    return ""
 
 # How long a directive of each priority is assumed to occupy the mic. Used for
 # interrupt/rate-limit decisions (a rough speaking-time budget, in seconds).
@@ -36,7 +46,7 @@ SPEAKING_WINDOW_SECONDS: dict[DirectivePriority, float] = {
 # Events the play-by-play caller owns (fast, live action).
 _PBP_EVENTS = (Kill, BombPlanted, BombDefused, BombExploded, ClutchStarted, ClutchWon, MatchEnded)
 # Events the analyst owns (setup, context, narrative).
-_ANALYST_EVENTS = (RoundStarted, MatchStarted)
+_ANALYST_EVENTS = (RoundStarted, MatchStarted, KnifeRound)
 
 
 def speaker_for_event(event: MatchEvent) -> Speaker:
@@ -61,7 +71,7 @@ def priority_for_event(event: MatchEvent) -> DirectivePriority:
         return DirectivePriority.HIGH if event.is_entry else DirectivePriority.NORMAL
     if isinstance(event, RoundEnded):
         return DirectivePriority.NORMAL
-    if isinstance(event, (RoundStarted, MatchStarted)):
+    if isinstance(event, (RoundStarted, MatchStarted, KnifeRound)):
         return DirectivePriority.LOW
     return DirectivePriority.AMBIENT
 
@@ -76,6 +86,7 @@ _BASE_EXCITEMENT: dict[type, float] = {
     RoundEnded: 0.55,
     RoundStarted: 0.3,
     MatchStarted: 0.4,
+    KnifeRound: 0.5,
 }
 
 
@@ -130,6 +141,8 @@ def excitement_for_event(
 
 def topic_for_event(event: MatchEvent) -> str:
     """A short machine topic label for the event."""
+    if isinstance(event, KnifeRound):
+        return "knife_round"
     return type(event).__name__
 
 
@@ -153,8 +166,13 @@ def context_for_event(event: MatchEvent) -> dict:
         )
     elif isinstance(event, RoundEnded):
         context.update(winner=event.winner, reason=event.reason, bomb_planted=event.bomb_planted)
-    elif isinstance(event, (MatchStarted,)):
-        context.update(map=event.map_name)
+    elif isinstance(event, MatchStarted):
+        context.update(map=event.map_name, best_of=event.best_of)
+        note = side_selection_note(event.best_of)
+        if note:
+            context["side_selection"] = note
+    elif isinstance(event, KnifeRound):
+        context["side_rule"] = "the winner chooses which side to start on"
     elif isinstance(event, MatchEnded):
         context.update(winner=event.winner, ct_score=event.ct_score, t_score=event.t_score)
     elif isinstance(event, ScoreChanged):

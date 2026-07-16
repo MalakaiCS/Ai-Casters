@@ -26,6 +26,7 @@ from ai_caster.detection.events import (
     ClutchStarted,
     ClutchWon,
     Kill,
+    KnifeRound,
     MatchEnded,
     MatchEvent,
     MatchStarted,
@@ -80,6 +81,7 @@ class EventDetector:
         self._trade_window = trade_window
         self._prev: GameState | None = None
         self._match_started = False
+        self._knife_round_done = False
         # Per-round state.
         self._round_number = -1
         self._first_blood_done = False
@@ -99,9 +101,11 @@ class EventDetector:
         if prev is None:
             self._prev = state
             self._maybe_match_started(state, events, round_number)
+            self._maybe_knife_round(state, events, round_number)
             return events
 
         self._maybe_match_started(state, events, round_number)
+        self._maybe_knife_round(state, events, round_number)
         self._detect_round_transitions(prev, state, events, round_number)
         self._detect_bomb(prev, state, events, round_number)
         self._detect_kills_and_deaths(prev, state, events, round_number, now)
@@ -120,7 +124,23 @@ class EventDetector:
         phase = state.map.phase if state.map else None
         if not self._match_started and phase in {"live", "warmup"} and state.map_name:
             self._match_started = True
-            events.append(MatchStarted(round_number=rnd, map_name=state.map_name))
+            events.append(
+                MatchStarted(
+                    round_number=rnd,
+                    map_name=state.map_name,
+                    best_of=_best_of(state),
+                )
+            )
+
+    def _maybe_knife_round(self, state: GameState, events: list, rnd: int) -> None:
+        """Announce the knife round once — it decides which side teams start on."""
+        if self._knife_round_done:
+            return
+        phase = state.round.phase if state.round else None
+        if phase != "live" or not is_knife_round(state):
+            return
+        self._knife_round_done = True
+        events.append(KnifeRound(round_number=rnd))
 
     def _maybe_match_ended(self, prev: GameState, state: GameState, events: list, rnd: int) -> None:
         prev_phase = prev.map.phase if prev.map else None
@@ -331,4 +351,36 @@ class EventDetector:
         """Forget all state (e.g. when a new match/map begins)."""
         self._prev = None
         self._match_started = False
+        self._knife_round_done = False
         self._reset_round_state(-1)
+
+
+def _best_of(state: GameState) -> int:
+    """Series format (Bo1/Bo3/Bo5) from GSI's matches-to-win-series, else 0."""
+    to_win = state.map.num_matches_to_win_series if state.map else None
+    if not to_win or to_win < 1:
+        return 0
+    return 2 * to_win - 1  # to_win 1 -> Bo1, 2 -> Bo3, 3 -> Bo5
+
+
+def is_knife_round(state: GameState) -> bool:
+    """Heuristic: a live round where every armed player holds only a knife.
+
+    In a knife round players carry nothing but their knife (the bomb aside), so no
+    one has a pistol/rifle/SMG. That's a far more reliable signal than round number
+    (knife rounds can be warm-up-like), and it can't be confused with an eco, where
+    players still keep their spawn pistol.
+    """
+    source = state.allplayers or {}
+    if len(source) < 2:
+        return False
+    knife_only_players = 0
+    for player in source.values():
+        weapons = player.weapons or {}
+        real = [w for w in weapons.values() if (w.type or "") not in ("C4", "")]
+        if not real:
+            continue  # no weapon data for this player — ignore, don't veto
+        if any((w.type or "") != "Knife" for w in real):
+            return False  # someone has a real gun -> not a knife round
+        knife_only_players += 1
+    return knife_only_players >= 2

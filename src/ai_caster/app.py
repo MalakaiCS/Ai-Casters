@@ -51,6 +51,7 @@ from ai_caster.match.engine import MatchStateEngine
 from ai_caster.match.state import MatchStateStore
 from ai_caster.obs.factory import create_obs_controller
 from ai_caster.obs.integration import OBSIntegration
+from ai_caster.obs.scene_watcher import OBSSceneWatcher
 from ai_caster.persistence.database import Database
 from ai_caster.persistence.repository import MatchRepository
 from ai_caster.rehearsal.player import RehearsalPlayer
@@ -214,6 +215,14 @@ class Application:
             live_scene=settings.audio_obs.live_scene,
             replay_scene=settings.audio_obs.replay_scene,
         )
+        # Recognise a replay when a HUD manager switches OBS to the replay scene.
+        self.obs_scene_watcher = OBSSceneWatcher(
+            self.event_bus,
+            self.obs.current_scene,
+            replay_scene=settings.audio_obs.replay_scene,
+            enabled=settings.audio_obs.detect_replay_from_scene,
+            poll_seconds=settings.audio_obs.scene_poll_seconds,
+        )
 
         # --- accounts, licensing, updates, sync (Modules 3, 4, 19; M8) ---- #
         # Each subsystem defaults to an offline backend so the whole account
@@ -348,6 +357,8 @@ class Application:
         self.downtime.start()
         if self.settings.audio_obs.enabled:
             self.obs.connect()
+        if self.settings.audio_obs.detect_replay_from_scene:
+            self.obs_scene_watcher.start()
         self._start_account_services()
         if self.settings.hotkeys.enabled:
             self.hotkeys.start()
@@ -422,6 +433,7 @@ class Application:
         if self.capture.is_running:
             self.capture.stop()
         self.voice.dispose()
+        self.obs_scene_watcher.dispose()
         self.obs.dispose()
         self.rehearsal_player.dispose()
         self.rehearsal_recorder.stop()
