@@ -37,6 +37,7 @@ from ai_caster.diagnostics.collector import DiagnosticsCollector, DiagnosticsSou
 from ai_caster.diagnostics.engine import DiagnosticsEngine
 from ai_caster.director.directives import Speaker
 from ai_caster.director.director import CommentaryDirector
+from ai_caster.downtime.commentator import DowntimeCommentator
 from ai_caster.gsi.receiver import GSIReceiver
 from ai_caster.gsi.server import GSIServer
 from ai_caster.hotkeys.actions import HotkeyAction
@@ -149,6 +150,14 @@ class Application:
             excitement_contrast=settings.commentary.excitement_contrast,
             replay_integration_enabled=settings.replay.enabled,
             treat_unknown_as_live=settings.replay.treat_unknown_as_live,
+        )
+
+        # --- downtime commentary (timeouts, pauses, breaks) --------------- #
+        self.downtime = DowntimeCommentator(
+            self.event_bus,
+            enabled=settings.downtime.enabled,
+            min_delay_seconds=settings.downtime.min_delay_seconds,
+            interval_seconds=settings.downtime.interval_seconds,
         )
 
         # --- commentary AIs (Modules 11 & 12) ----------------------------- #
@@ -326,6 +335,7 @@ class Application:
         self.play_by_play.start()
         self.analyst.start()
         self.voice.start()
+        self.downtime.start()
         if self.settings.audio_obs.enabled:
             self.obs.connect()
         self._start_account_services()
@@ -405,6 +415,7 @@ class Application:
         self.obs.dispose()
         self.play_by_play.dispose()
         self.analyst.dispose()
+        self.downtime.dispose()
         self.director.dispose()
         self.match_engine.dispose()
         if self.database is not None:
@@ -455,6 +466,7 @@ class Application:
             min_speech_gap=settings.commentary.min_speech_gap_ms / 1000.0,
             excitement_contrast=settings.commentary.excitement_contrast,
         )
+        self.downtime.set_enabled(settings.downtime.enabled)
 
     def _on_gsi_connection(self, event: GSIConnectionChanged) -> None:
         self._gsi_connected = event.connected

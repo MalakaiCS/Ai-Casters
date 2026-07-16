@@ -267,6 +267,26 @@ class CommentarySettings(_Section):
     )
 
 
+class DowntimeSettings(_Section):
+    """Desk chatter during timeouts, pauses and breaks (downtime commentator)."""
+
+    enabled: bool = Field(
+        default=True, description="Fill timeouts/pauses/breaks with casual desk commentary."
+    )
+    min_delay_seconds: float = Field(
+        default=12.0,
+        ge=0.0,
+        le=120.0,
+        description="Wait this long into a lull before the desk starts chatting.",
+    )
+    interval_seconds: float = Field(
+        default=25.0,
+        ge=5.0,
+        le=300.0,
+        description="Gap between downtime lines while a lull continues.",
+    )
+
+
 class AccountProvider(StrEnum):
     """Which authentication backend the account client uses."""
 
@@ -406,6 +426,7 @@ class AppSettings(_Section):
     vision: VisionSettings = Field(default_factory=VisionSettings)
     ai: AISettings = Field(default_factory=AISettings)
     commentary: CommentarySettings = Field(default_factory=CommentarySettings)
+    downtime: DowntimeSettings = Field(default_factory=DowntimeSettings)
     account: AccountSettings = Field(default_factory=AccountSettings)
     licensing: LicensingSettings = Field(default_factory=LicensingSettings)
     updater: UpdaterSettings = Field(default_factory=UpdaterSettings)

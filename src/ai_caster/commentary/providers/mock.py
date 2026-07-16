@@ -96,6 +96,25 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], str]] = {
     ),
     "replay": lambda c: f"Here's another look at that {c.get('replay_type', 'moment')}.",
     "back_to_live": lambda _c: "And we're back to the live action.",
+    # -- downtime / desk chatter (timeouts, pauses, breaks) ------------- #
+    "timeout_expectation": lambda c: (
+        f"{c.get('team') or 'That side'} have called this timeout at {c.get('score', '0-0')} — "
+        "expect them to settle the nerves, reset the economy and come back with a fresh plan."
+    ),
+    "downtime_stat": lambda c: (
+        f"While we've got a moment — we're {c.get('score', '0-0')} through "
+        f"{c.get('round', 0)} rounds here on {c.get('map') or 'this map'}."
+    ),
+    "halftime_recap": lambda c: (
+        f"Time to take stock at {c.get('score', '0-0')} — plenty for both benches to talk through."
+    ),
+    "downtime_chatter": lambda _c: (
+        "A bit of a breather here — good chance for both teams to regroup and look ahead."
+    ),
+    "warmup_preview": lambda c: (
+        f"Still in the warm-up on {c.get('map') or 'this map'} — plenty to look forward to "
+        "once we go live."
+    ),
 }
 
 

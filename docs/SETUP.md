@@ -183,6 +183,16 @@ monitor mix.
   OpenAI-compatible servers). A missing SDK or a provider error degrades back to
   Mock mid-broadcast so the show keeps talking.
 
+### Downtime commentary (timeouts, pauses & breaks)
+
+When there's no live action — a **called timeout**, a **paused** match, **half-time**
+or **warm-up** — the desk keeps talking instead of going silent: the analyst covers
+*what to expect from the team that called the timeout*, and the play-by-play caster
+keeps things warm with the score and a stat or two. It waits a few seconds into the
+lull before starting, never interrupts live action, and yields entirely to replays.
+Tune or disable it under `downtime` in settings (`enabled`, `min_delay_seconds`,
+`interval_seconds`).
+
 ---
 
 ## 10. Accounts, roles, licensing & updates

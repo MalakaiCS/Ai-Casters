@@ -154,6 +154,7 @@ class LiveMatch:
     match_phase: str | None = None
     round_number: int = 0
     round_phase: str | None = None
+    active_phase: str | None = None  # GSI phase_countdowns.phase: timeout_ct/paused/live/…
     bomb_state: str | None = None
     observed_steamid: str | None = None
     rounds_to_win: int = DEFAULT_ROUNDS_TO_WIN
@@ -193,6 +194,20 @@ class LiveMatch:
     def is_match_point(self) -> bool:
         target = self.rounds_to_win
         return self.ct.score == target - 1 or self.t.score == target - 1
+
+    @property
+    def timeout_side(self) -> Side | None:
+        """Which side called the current timeout, from the active phase."""
+        phase = (self.active_phase or "").lower()
+        if phase.startswith("timeout_ct"):
+            return Side.CT
+        if phase.startswith("timeout_t"):
+            return Side.T
+        return None
+
+    @property
+    def is_paused(self) -> bool:
+        return (self.active_phase or "").lower() == "paused"
 
     def with_history(self, history: tuple[RoundRecord, ...]) -> LiveMatch:
         return replace(self, history=history)
@@ -386,6 +401,11 @@ def build_live_match(
         match_phase=state.map.phase if state.map else None,
         round_number=state.round_number or 0,
         round_phase=state.round.phase if state.round else None,
+        active_phase=(
+            str(state.phase_countdowns.get("phase"))
+            if state.phase_countdowns and state.phase_countdowns.get("phase") is not None
+            else None
+        ),
         bomb_state=state.round.bomb if state.round else None,
         observed_steamid=(state.player.steamid if state.player else None),
         rounds_to_win=rounds_to_win,
