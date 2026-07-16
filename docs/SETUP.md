@@ -125,6 +125,25 @@ overrides confirmed GSI data.
 
 ---
 
+## 5b. Rehearsal mode — record & replay a match
+
+You don't need a live CS2 match in front of you to test the cast. The **Rehearsal**
+view lets you:
+
+- **Record** the live GSI feed to a `.jsonl` clip while a real match (or a demo)
+  plays. The clip is saved under your data folder's `recordings/`; the GSI auth
+  token is stripped, so a clip is safe to keep or share.
+- **Replay** any saved clip back through the *entire* pipeline — match model,
+  director, banter, voices — at **0.5× / 1× / 2× / 4× / Instant**. Because it drives
+  the same path as a live feed, it's the fastest way to tune voices, excitement,
+  reaction contrast, and the downtime/slow-round filler, and it runs on any machine
+  with no CS2 open. A progress bar tracks playback; **Stop** ends it early.
+
+Record one good match once, then iterate on your commentary settings against it
+as many times as you like.
+
+---
+
 ## 6. Audio routing & voices
 
 Two **completely independent** voices (play-by-play + analyst), each with its own
@@ -195,6 +214,13 @@ monitor mix.
   provider rotates through several phrasings per situation so you don't hear the
   same line every bomb plant, and the real LLM providers are given the last few
   spoken lines and told to say something fresh.
+- **The two casters talk to each other (banter):** they now share a live desk
+  transcript, so the analyst can build on what the play-by-play just said instead
+  of two announcers talking in isolation. On a marquee moment (a clutch), the
+  play-by-play makes the call and the analyst chimes straight in with a reaction —
+  never interrupting the caller. With a real LLM the reactions are free-form; the
+  offline provider adds a light lead-in ("Right —…") so the exchange still reads
+  as a conversation.
 
 ### Downtime commentary (timeouts, pauses & breaks)
 

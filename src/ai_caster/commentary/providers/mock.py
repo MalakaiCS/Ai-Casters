@@ -224,6 +224,13 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
         "And we're back to the live action.",
         "Back to live — let's pick it up.",
     ],
+    # -- co-caster reaction (a live banter beat after a huge play) ------ #
+    "reaction": lambda _c: [
+        "That's exactly what I mean — ice in the veins there.",
+        "Unreal composure; you don't see that under pressure.",
+        "And that's the round on its head — huge from them.",
+        "Textbook execution when it mattered most.",
+    ],
     # -- downtime / desk chatter (timeouts, pauses, breaks) ------------- #
     "timeout_expectation": _timeout_expectation,
     "downtime_stat": _downtime_stat,
@@ -246,6 +253,14 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
 }
 
 
+# Topics where a spoken lead-in ("Right —") reads as the analyst answering the
+# play-by-play, so the offline desk shows banter too (no facts invented).
+_REACTIVE_TOPICS = frozenset(
+    {"reaction", "round_analysis", "halftime_recap", "slow_round_positioning"}
+)
+_CONNECTIVES = ("Right —", "Exactly —", "And on that,", "Building on that,")
+
+
 class MockProvider:
     """Template-based, offline commentary that rotates phrasings to avoid repeats."""
 
@@ -254,6 +269,7 @@ class MockProvider:
     def __init__(self) -> None:
         # Per-topic rotation cursor so consecutive lines on the same topic differ.
         self._rotation: dict[str, int] = defaultdict(int)
+        self._connective = 0
 
     def generate(self, request: LLMRequest) -> str:
         builder = _BUILDERS.get(request.topic)
@@ -268,4 +284,17 @@ class MockProvider:
         line = options[index]
         if request.topic == "Kill":
             line = _decorate_kill(line, request.context)
+        else:
+            line = self._maybe_react(line, request)
         return line
+
+    def _maybe_react(self, line: str, request: LLMRequest) -> str:
+        """Prefix a light connective when answering the co-caster (offline banter)."""
+        if request.topic not in _REACTIVE_TOPICS or not request.conversation:
+            return line
+        last_speaker = request.conversation[-1][0]
+        if not request.speaker or last_speaker == request.speaker:
+            return line  # co-caster didn't just speak; no reaction lead-in
+        connective = _CONNECTIVES[self._connective % len(_CONNECTIVES)]
+        self._connective += 1
+        return f"{connective} {line[0].lower() + line[1:]}" if line else line

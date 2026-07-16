@@ -17,6 +17,7 @@ import threading
 from collections import deque
 from collections.abc import Callable
 
+from ai_caster.commentary.conversation import ConversationMemory
 from ai_caster.commentary.lines import CommentaryLine, CommentaryLineGenerated
 from ai_caster.commentary.prompts import system_prompt, user_prompt
 from ai_caster.commentary.providers.base import LLMProvider, LLMRequest
@@ -45,6 +46,7 @@ class CommentaryGenerator:
         queue_size: int = 16,
         enabled: bool = True,
         history: int = 100,
+        conversation: ConversationMemory | None = None,
     ) -> None:
         self._bus = event_bus
         self._provider = provider
@@ -54,6 +56,7 @@ class CommentaryGenerator:
         self._language = language
         self._max_tokens = max_tokens
         self._enabled = enabled
+        self._conversation = conversation
 
         self._queue: queue.Queue = queue.Queue(maxsize=queue_size)
         self._thread: threading.Thread | None = None
@@ -84,6 +87,12 @@ class CommentaryGenerator:
         with self._lock:
             recent = [line.text for line in self._recent if line.text]
         return tuple(reversed(recent[-count:]))
+
+    def _conversation_pairs(self, count: int = 4) -> tuple[tuple[str, str], ...]:
+        """The recent desk exchange (both casters), oldest first, for banter."""
+        if self._conversation is None:
+            return ()
+        return tuple((turn.speaker, turn.text) for turn in self._conversation.recent(count))
 
     # ------------------------------------------------------------------ #
     def start(self) -> None:
@@ -149,14 +158,16 @@ class CommentaryGenerator:
     def generate(self, directive: CommentaryDirective) -> CommentaryLine:
         """Produce a line for ``directive`` (synchronous; used by the worker/tests)."""
         avoid = self._recent_texts()
+        conversation = self._conversation_pairs()
         request = LLMRequest(
             system=system_prompt(self._role.value, self._language),
-            user=user_prompt(directive, avoid),
+            user=user_prompt(directive, avoid, conversation, self._role.value),
             topic=directive.topic,
             speaker=self._role.value,
             excitement=directive.excitement,
             context=directive.context,
             avoid=avoid,
+            conversation=conversation,
             model=self._model,
             max_tokens=self._max_tokens,
         )

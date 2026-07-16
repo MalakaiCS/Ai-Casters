@@ -37,6 +37,7 @@ from ai_caster.ui.views.diagnostics_view import DiagnosticsView
 from ai_caster.ui.views.director_view import DirectorView
 from ai_caster.ui.views.gsi_view import GSIView
 from ai_caster.ui.views.match_view import MatchView
+from ai_caster.ui.views.rehearsal_view import RehearsalView
 from ai_caster.ui.views.replay_view import ReplayView
 from ai_caster.ui.views.settings_view import SettingsView
 from ai_caster.ui.views.statistics_view import StatisticsView
@@ -95,6 +96,11 @@ class MainWindow(QMainWindow):
         self._statistics_view = StatisticsView(application.statistics)
         self._capture_view = CaptureView(application.capture, application.settings_manager)
         self._vision_view = VisionView(application.vision)
+        self._rehearsal_view = RehearsalView(
+            application.rehearsal_recorder,
+            application.rehearsal_player,
+            application.recordings_dir,
+        )
         self._director_view = DirectorView(application.director)
         self._commentary_view = CommentaryView(application.play_by_play, application.analyst)
         self._voice_view = VoiceView(
@@ -123,6 +129,7 @@ class MainWindow(QMainWindow):
         self._add_view("Statistics", self._statistics_view)
         self._add_view("Video Capture", self._capture_view)
         self._add_view("Computer Vision", self._vision_view)
+        self._add_view("Rehearsal", self._rehearsal_view)
         self._add_view("Commentary Director", self._director_view)
         self._add_view("Commentary AIs", self._commentary_view)
         self._add_view("Voice, Audio & OBS", self._voice_view)

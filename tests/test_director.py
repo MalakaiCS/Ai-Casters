@@ -74,8 +74,23 @@ def test_higher_priority_interrupts_current_speech():
     director.handle_match_event(Kill(is_entry=True))  # HIGH, occupies the mic
     # Immediately, a clutch win (CRITICAL) should interrupt.
     directives = director.handle_match_event(ClutchWon(player_name="hero"))
-    assert len(directives) == 1
-    assert directives[0].interrupt is True
+    # The play-by-play call interrupts; a low-priority analyst banter beat follows.
+    primary = directives[0]
+    assert primary.speaker is Speaker.PLAY_BY_PLAY
+    assert primary.interrupt is True
+
+
+def test_clutch_win_triggers_analyst_banter_reaction():
+    clock = _Clock()
+    director, _, _ = _director(clock=clock)
+    directives = director.handle_match_event(ClutchWon(player_name="hero"))
+    reactions = [
+        d for d in directives if d.speaker is Speaker.ANALYST and d.reason == "banter_reaction"
+    ]
+    assert len(reactions) == 1
+    beat = reactions[0]
+    assert beat.topic == "reaction"
+    assert beat.interrupt is False  # never steps on the caller
 
 
 def test_equal_or_lower_priority_yields_while_busy():

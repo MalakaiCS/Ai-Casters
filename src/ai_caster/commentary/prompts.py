@@ -24,6 +24,13 @@ _SHARED_RULES = (
     "line: no preamble, labels, quotation marks, or stage directions."
 )
 
+_BANTER_RULE = (
+    "You share the desk with a co-commentator. When they have just spoken, you "
+    "may briefly build on or answer what they said so it sounds like a real "
+    "two-person conversation — but never repeat their words, and never invent "
+    "facts to do it. Address them naturally, not by name."
+)
+
 
 def system_prompt(speaker: str, language: str = "en") -> str:
     """Build the system prompt for a speaker role."""
@@ -40,14 +47,21 @@ def system_prompt(speaker: str, language: str = "en") -> str:
             "broadcast. Give measured, insightful, conversational commentary in one "
             "or two sentences."
         )
-    return f"{style} {_SHARED_RULES} Respond in {lang}."
+    return f"{style} {_SHARED_RULES} {_BANTER_RULE} Respond in {lang}."
 
 
-def user_prompt(directive: CommentaryDirective, avoid: tuple[str, ...] = ()) -> str:
+def user_prompt(
+    directive: CommentaryDirective,
+    avoid: tuple[str, ...] = (),
+    conversation: tuple[tuple[str, str], ...] = (),
+    speaker: str = "",
+) -> str:
     """Render the event facts into a compact brief for the model.
 
     ``avoid`` lists lines said recently so the model varies its wording instead
     of repeating stock phrases — the most common complaint about auto-casters.
+    ``conversation`` is the recent desk exchange as ``(speaker, text)`` pairs so
+    this caster can react to its co-caster (banter).
     """
     facts = ", ".join(f"{k}={v}" for k, v in directive.context.items()) or "none"
     parts = [
@@ -55,6 +69,15 @@ def user_prompt(directive: CommentaryDirective, avoid: tuple[str, ...] = ()) -> 
         f"Excitement: {directive.excitement:.2f} (0=calm, 1=maximum).",
         f"Facts: {facts}.",
     ]
+    if conversation:
+        exchange = " ".join(
+            f"[{_who(role, speaker)}] {text.strip()}" for role, text in conversation if text.strip()
+        )
+        if exchange:
+            parts.append(f"Recent desk exchange (most recent last): {exchange}")
+            last_role = conversation[-1][0]
+            if speaker and last_role != speaker:
+                parts.append("Your co-caster just spoke — you may briefly react to them.")
     if avoid:
         recent = " | ".join(line.strip() for line in avoid if line.strip())
         if recent:
@@ -64,3 +87,10 @@ def user_prompt(directive: CommentaryDirective, avoid: tuple[str, ...] = ()) -> 
             )
     parts.append("Produce the single spoken line now.")
     return " ".join(parts)
+
+
+def _who(role: str, speaker: str) -> str:
+    """Label a transcript turn from this speaker's point of view."""
+    if speaker and role == speaker:
+        return "you"
+    return "co-caster"

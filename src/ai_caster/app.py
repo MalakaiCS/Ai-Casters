@@ -24,6 +24,7 @@ from ai_caster.broadcast.controller import BroadcastController
 from ai_caster.capture.factory import create_frame_source
 from ai_caster.capture.pipeline import CapturePipeline
 from ai_caster.capture.uploader import create_uploader
+from ai_caster.commentary.conversation import ConversationMemory
 from ai_caster.commentary.factory import create_provider
 from ai_caster.commentary.generator import CommentaryGenerator
 from ai_caster.config.deploy import deploy_overrides
@@ -52,6 +53,8 @@ from ai_caster.obs.controller import NullOBSController, WebSocketOBSController
 from ai_caster.obs.integration import OBSIntegration
 from ai_caster.persistence.database import Database
 from ai_caster.persistence.repository import MatchRepository
+from ai_caster.rehearsal.player import RehearsalPlayer
+from ai_caster.rehearsal.recorder import GsiRecorder
 from ai_caster.replay.receiver import ReplayReceiver
 from ai_caster.replay.server import ReplayServer
 from ai_caster.statistics.engine import StatisticsEngine
@@ -101,6 +104,15 @@ class Application:
             host=settings.gsi.host,
             port=settings.gsi.port,
         )
+
+        # --- rehearsal mode (record + replay a GSI feed) ------------------ #
+        # The recorder taps authenticated live payloads; the player feeds a saved
+        # clip back through the receiver's replay path so the whole cast runs
+        # exactly as live, on any machine, with no CS2 running.
+        self.recordings_dir = self.paths.data_dir / "recordings"
+        self.rehearsal_recorder = GsiRecorder()
+        self.gsi_receiver.set_recorder(self.rehearsal_recorder.record)
+        self.rehearsal_player = RehearsalPlayer(self.gsi_receiver.replay_payload)
 
         # --- persistence (M2, optional) ----------------------------------- #
         self.database: Database | None = None
@@ -168,6 +180,8 @@ class Application:
         # directives addressed to its role into spoken lines on a worker thread.
         provider = create_provider(settings.ai)
         language = settings.commentary.language.value
+        # Shared desk transcript so the two casters can react to each other (banter).
+        self.conversation = ConversationMemory(self.event_bus)
         self.play_by_play = CommentaryGenerator(
             self.event_bus,
             provider,
@@ -175,6 +189,7 @@ class Application:
             model=settings.ai.play_by_play_model,
             language=language,
             max_tokens=settings.ai.max_tokens,
+            conversation=self.conversation,
         )
         self.analyst = CommentaryGenerator(
             self.event_bus,
@@ -183,6 +198,7 @@ class Application:
             model=settings.ai.analyst_model,
             language=language,
             max_tokens=settings.ai.max_tokens,
+            conversation=self.conversation,
         )
 
         # --- voice engine + audio routing (Modules 13 & 14) --------------- #
@@ -416,8 +432,11 @@ class Application:
             self.capture.stop()
         self.voice.dispose()
         self.obs.dispose()
+        self.rehearsal_player.dispose()
+        self.rehearsal_recorder.stop()
         self.play_by_play.dispose()
         self.analyst.dispose()
+        self.conversation.dispose()
         self.downtime.dispose()
         self.director.dispose()
         self.match_engine.dispose()

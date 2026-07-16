@@ -25,6 +25,9 @@ class LLMRequest:
     # Recently spoken lines the model should avoid echoing, so the broadcast does
     # not repeat itself. Advisory: the mock ignores it (it rotates instead).
     avoid: tuple[str, ...] = ()
+    # The recent back-and-forth on the desk as (speaker, text) pairs — including
+    # the co-caster's lines — so this speaker can react to them (banter).
+    conversation: tuple[tuple[str, str], ...] = ()
     model: str = ""  # blank -> provider default
     max_tokens: int = 90
     # Advisory only; providers that reject sampling params (e.g. Anthropic on

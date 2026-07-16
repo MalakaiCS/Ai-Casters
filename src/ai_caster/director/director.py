@@ -23,7 +23,7 @@ from collections.abc import Callable
 
 from ai_caster.core.events import EventBus
 from ai_caster.core.logging import get_logger
-from ai_caster.detection.events import MatchEvent, RoundEnded
+from ai_caster.detection.events import ClutchWon, MatchEvent, RoundEnded
 from ai_caster.director import policy
 from ai_caster.director.directives import (
     CommentaryDirective,
@@ -39,6 +39,10 @@ from ai_caster.vision.events import VisionStateUpdated
 from ai_caster.vision.observations import SceneType
 
 _log = get_logger("director")
+
+# Minimum excitement for the analyst to react to a play-by-play call live, so the
+# banter beat only fires on genuinely big moments (not routine plays).
+_BANTER_EXCITEMENT = 0.75
 
 
 class CommentaryDirector:
@@ -245,6 +249,26 @@ class CommentaryDirector:
                     excitement=round(excitement * 0.6, 4),
                     topic="round_analysis",
                     reason="post_round_handoff",
+                    context=policy.context_for_event(event),
+                )
+            )
+        # Live banter beat: on a marquee play-by-play call (e.g. a clutch), let the
+        # analyst chime in with a short reaction so the desk sounds like a real
+        # two-person booth. Low priority + non-interrupting, so it never steps on
+        # live action; it simply follows once the caller's line has landed.
+        elif (
+            speaker is Speaker.PLAY_BY_PLAY
+            and isinstance(event, ClutchWon)
+            and excitement >= _BANTER_EXCITEMENT
+        ):
+            directives.append(
+                CommentaryDirective(
+                    speaker=Speaker.ANALYST,
+                    kind=DirectiveKind.HANDOFF,
+                    priority=DirectivePriority.LOW,
+                    excitement=round(excitement * 0.7, 4),
+                    topic="reaction",
+                    reason="banter_reaction",
                     context=policy.context_for_event(event),
                 )
             )
