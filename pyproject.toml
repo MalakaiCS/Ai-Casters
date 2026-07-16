@@ -20,6 +20,9 @@ dependencies = [
     "uvicorn[standard]>=0.29",
     "platformdirs>=4.2",
     "numpy>=1.26",
+    # Bundled CA store so HTTPS to the account service verifies in a frozen build
+    # (a packaged app may not reach the OS trust store).
+    "certifi>=2024.2",
 ]
 
 [project.optional-dependencies]

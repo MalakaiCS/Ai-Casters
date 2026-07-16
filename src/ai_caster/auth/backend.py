@@ -224,7 +224,7 @@ class SupabaseAuthBackend:
 
     name = "supabase"
 
-    def __init__(self, url: str, anon_key: str, *, timeout: float = 8.0) -> None:
+    def __init__(self, url: str, anon_key: str, *, timeout: float = 20.0) -> None:
         base = url.rstrip("/")
         self._auth = base + "/auth/v1"
         self._rest = base + "/rest/v1"
@@ -274,7 +274,14 @@ class SupabaseAuthBackend:
             return "That email is already registered."
         if exc.status == 429:
             return "Too many attempts; please wait a moment and try again."
-        return f"Authentication service error ({exc.status or 'network'})."
+        if exc.status is None:
+            # A connection-level failure (TLS, DNS, timeout, blocked). Surface the
+            # real reason so it can actually be fixed rather than a bare "network".
+            _log.warning("Account service unreachable: %s", exc)
+            reason = exc.reason or str(exc)
+            return f"Couldn't reach the account service: {reason}"
+        _log.warning("Account service error %s: %s", exc.status, exc)
+        return f"Authentication service error ({exc.status})."
 
     @staticmethod
     def _parse_role(rows: object) -> str:

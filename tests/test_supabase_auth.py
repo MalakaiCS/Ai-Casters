@@ -143,6 +143,18 @@ def test_login_bad_credentials_is_friendly(monkeypatch):
     assert "Invalid email or password" in result.error
 
 
+def test_network_failure_surfaces_the_real_reason(monkeypatch):
+    # A connection-level failure (status None) should report the underlying
+    # reason (e.g. a TLS error) instead of a bare "network".
+    err = HttpError("boom", reason="certificate verify failed")
+    fake = _FakeTransport(error=err)
+    monkeypatch.setattr(backend_mod, "post_json", fake)
+    result = _backend().signup("caster@example.com", "password123", device_id=DEVICE)
+    assert not result.ok
+    assert "certificate verify failed" in result.error
+    assert "Couldn't reach the account service" in result.error
+
+
 # --- signup ---------------------------------------------------------------- #
 def test_signup_auto_confirmed_returns_session(monkeypatch):
     fake = _FakeTransport({"access_token": "at", "refresh_token": "rt", "user": _USER})
