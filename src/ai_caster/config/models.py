@@ -46,6 +46,14 @@ class Language(StrEnum):
     FRENCH = "fr"
 
 
+class CastStart(StrEnum):
+    """When the casters should begin talking in a match."""
+
+    ASAP = "asap"  # start immediately (warm-up included) — the default
+    KNIFE_ROUND = "knife_round"  # hold until the knife round begins
+    ROUND_1 = "round_1"  # hold until the first scored round (skip warm-up + knife)
+
+
 class CaptureSourceType(StrEnum):
     """Where the observer feed pixels come from (Module 6)."""
 
@@ -257,6 +265,11 @@ class CommentarySettings(_Section):
     """High-level broadcast behaviour (Commentary Director, M5)."""
 
     language: Language = Language.ENGLISH
+    cast_start: CastStart = Field(
+        default=CastStart.ASAP,
+        description="When to begin casting: as soon as possible, at the knife round, "
+        "or from round 1 (skipping warm-up and the knife round).",
+    )
     excitement: float = Field(
         default=0.7, ge=0.0, le=1.0, description="Baseline energy for play-by-play."
     )

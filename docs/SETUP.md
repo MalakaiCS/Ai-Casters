@@ -215,6 +215,14 @@ The AI knows how CS2 decides starting sides and will set the stage correctly:
 
 - **Dashboard → Go live** starts capture + vision together and begins casting.
   **Mute all** and **Force replay** are next to it.
+- **Start casting from** (Dashboard, next to Go live) picks *when* the desk begins
+  talking each match:
+  - **ASAP** — immediately, warm-up included (default).
+  - **Knife round** — hold until the knife round begins (or the first live round if
+    there's no knife round).
+  - **Round 1** — hold until the first scored round, skipping warm-up *and* the
+    knife round.
+  The setting re-arms every new match, so it applies to each game you cast.
 - **Global hotkeys** (install the `hotkeys` extra for OS-global keys; the buttons
   work regardless):
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -20,15 +21,29 @@ from PySide6.QtWidgets import (
 
 from ai_caster import __brand__, __tagline__, __version__
 from ai_caster.broadcast.controller import BroadcastController
+from ai_caster.config.manager import SettingsManager
+from ai_caster.config.models import CastStart
 from ai_caster.ui.branding import logo_pixmap
+
+_CAST_START_OPTIONS = [
+    ("ASAP (as soon as the game starts)", CastStart.ASAP),
+    ("Knife round", CastStart.KNIFE_ROUND),
+    ("Round 1 (skip warm-up & knife)", CastStart.ROUND_1),
+]
 
 
 class DashboardView(QWidget):
     """At-a-glance status of the application, plus broadcast controls."""
 
-    def __init__(self, gsi_address: str, broadcast: BroadcastController | None = None) -> None:
+    def __init__(
+        self,
+        gsi_address: str,
+        broadcast: BroadcastController | None = None,
+        settings_manager: SettingsManager | None = None,
+    ) -> None:
         super().__init__()
         self._broadcast = broadcast
+        self._settings = settings_manager
         root = QVBoxLayout(self)
 
         pixmap = logo_pixmap(360)
@@ -91,7 +106,32 @@ class DashboardView(QWidget):
         buttons.addWidget(self._replay)
         buttons.addStretch(1)
         layout.addLayout(buttons)
+
+        if self._settings is not None:
+            start_row = QHBoxLayout()
+            start_row.addWidget(QLabel("Start casting from:"))
+            self._cast_start = QComboBox()
+            for label, value in _CAST_START_OPTIONS:
+                self._cast_start.addItem(label, value.value)
+            current = self._settings.settings.commentary.cast_start.value
+            idx = self._cast_start.findData(current)
+            if idx >= 0:
+                self._cast_start.setCurrentIndex(idx)
+            self._cast_start.currentIndexChanged.connect(self._on_cast_start_changed)
+            self._cast_start.setToolTip(
+                "When the casters begin talking: immediately, at the knife round, or "
+                "from the first scored round (skipping warm-up and the knife round)."
+            )
+            start_row.addWidget(self._cast_start, stretch=1)
+            layout.addLayout(start_row)
         return box
+
+    def _on_cast_start_changed(self) -> None:
+        if self._settings is None:
+            return
+        settings = self._settings.settings.model_copy(deep=True)
+        settings.commentary.cast_start = CastStart(self._cast_start.currentData())
+        self._settings.update(settings, section="commentary")
 
     # ------------------------------------------------------------------ #
     # Slots (Qt thread)

@@ -36,6 +36,7 @@ from ai_caster.core.logging import configure_logging, get_logger
 from ai_caster.core.paths import AppPaths, get_app_paths
 from ai_caster.diagnostics.collector import DiagnosticsCollector, DiagnosticsSources
 from ai_caster.diagnostics.engine import DiagnosticsEngine
+from ai_caster.director.cast_gate import CastGate
 from ai_caster.director.directives import Speaker
 from ai_caster.director.director import CommentaryDirector
 from ai_caster.downtime.commentator import DowntimeCommentator
@@ -154,6 +155,11 @@ class Application:
             self.replay_receiver, host="127.0.0.1", port=settings.replay.listen_port
         )
 
+        # --- cast-start gate (when the desk begins talking) --------------- #
+        # Constructed BEFORE the director so it sees each match event first and can
+        # open in time for that same event to be cast (e.g. the knife round).
+        self.cast_gate = CastGate(self.event_bus, mode=settings.commentary.cast_start)
+
         # --- commentary director (Module 10) ------------------------------ #
         self.director = CommentaryDirector(
             self.event_bus,
@@ -163,6 +169,7 @@ class Application:
             excitement_contrast=settings.commentary.excitement_contrast,
             replay_integration_enabled=settings.replay.enabled,
             treat_unknown_as_live=settings.replay.treat_unknown_as_live,
+            cast_gate=self.cast_gate,
         )
 
         # --- downtime commentary (timeouts, pauses, breaks) --------------- #
@@ -174,6 +181,7 @@ class Application:
             slow_round_enabled=settings.downtime.slow_round_enabled,
             slow_round_after_seconds=settings.downtime.slow_round_after_seconds,
             slow_round_interval_seconds=settings.downtime.slow_round_interval_seconds,
+            cast_gate=self.cast_gate,
         )
 
         # --- commentary AIs (Modules 11 & 12) ----------------------------- #
@@ -442,6 +450,7 @@ class Application:
         self.conversation.dispose()
         self.downtime.dispose()
         self.director.dispose()
+        self.cast_gate.dispose()
         self.match_engine.dispose()
         if self.database is not None:
             self.database.close()
@@ -493,6 +502,7 @@ class Application:
         )
         self.downtime.set_enabled(settings.downtime.enabled)
         self.downtime.set_slow_round_enabled(settings.downtime.slow_round_enabled)
+        self.cast_gate.set_mode(settings.commentary.cast_start)
 
     def _on_gsi_connection(self, event: GSIConnectionChanged) -> None:
         self._gsi_connected = event.connected

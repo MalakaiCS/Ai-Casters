@@ -60,6 +60,7 @@ class CommentaryDirector:
         treat_unknown_as_live: bool = False,
         history: int = 200,
         clock: Callable[[], float] = time.monotonic,
+        cast_gate=None,  # noqa: ANN001 - CastGate | None
     ) -> None:
         self._bus = event_bus
         self._baseline = baseline_excitement
@@ -69,6 +70,7 @@ class CommentaryDirector:
         self._replay_enabled = replay_integration_enabled
         self._treat_unknown_as_live = treat_unknown_as_live
         self._clock = clock
+        self._cast_gate = cast_gate
 
         self._lock = threading.RLock()
         self._round_importance = 0.0
@@ -167,6 +169,8 @@ class CommentaryDirector:
     # ------------------------------------------------------------------ #
     def handle_match_event(self, event: MatchEvent) -> list[CommentaryDirective]:
         """Decide and publish directives for a match event."""
+        if not self._casting_open():
+            return []  # the desk hasn't been cleared to start talking yet
         with self._lock:
             directives = self._decide_match_event(event)
             for directive in directives:
@@ -178,7 +182,11 @@ class CommentaryDirector:
     def handle_replay_change(self, state, transition: str) -> list[CommentaryDirective]:
         """Decide and publish directives for a replay transition."""
         with self._lock:
+            # Always track replay state (so live/replay is correct once casting
+            # starts), but don't voice anything while the desk is still gated.
             self._replay_active = bool(getattr(state, "active", False))
+            if not self._casting_open():
+                return []
             directives = self._decide_replay(state, transition)
             for directive in directives:
                 self._record(directive)
@@ -312,6 +320,10 @@ class CommentaryDirector:
         return []
 
     # ------------------------------------------------------------------ #
+    def _casting_open(self) -> bool:
+        """Whether the cast-start gate (if any) has cleared the desk to talk."""
+        return self._cast_gate is None or self._cast_gate.is_open
+
     def _live_now(self) -> bool:
         return policy.is_live_broadcast(
             replay_active=self._replay_active,

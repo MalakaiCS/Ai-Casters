@@ -90,7 +90,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._stack, stretch=1)
         self.setCentralWidget(central)
 
-        self._dashboard = DashboardView(application.gsi_server.address, application.broadcast)
+        self._dashboard = DashboardView(
+            application.gsi_server.address,
+            application.broadcast,
+            application.settings_manager,
+        )
         self._gsi_view = GSIView(application.gsi_server.address)
         self._match_view = MatchView()
         self._statistics_view = StatisticsView(application.statistics)

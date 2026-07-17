@@ -56,9 +56,11 @@ class DowntimeCommentator:
         slow_round_interval_seconds: float = 18.0,
         tick_seconds: float = 3.0,
         clock: Callable[[], float] = time.monotonic,
+        cast_gate=None,  # noqa: ANN001 - CastGate | None
     ) -> None:
         self._bus = event_bus
         self._enabled = enabled
+        self._cast_gate = cast_gate
         self._min_delay = min_delay_seconds
         self._interval = interval_seconds
         self._slow_enabled = slow_round_enabled
@@ -139,6 +141,8 @@ class DowntimeCommentator:
         with self._lock:
             if not self._enabled or self._replay_active:
                 return None
+            if self._cast_gate is not None and not self._cast_gate.is_open:
+                return None  # desk hasn't been cleared to start talking yet
             match = self._match
             lull = detect_lull(match)
             if lull.active:
