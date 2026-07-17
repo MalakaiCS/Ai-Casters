@@ -327,6 +327,13 @@ class DowntimeSettings(_Section):
         le=300.0,
         description="Gap between filler lines while a live round stays quiet.",
     )
+    round_intro_seconds: float = Field(
+        default=6.0,
+        ge=1.0,
+        le=60.0,
+        description="Seconds into a live round before the opening map-control line "
+        "(Stage 1) fills the gap, if nothing has happened yet.",
+    )
 
 
 class AccountProvider(StrEnum):

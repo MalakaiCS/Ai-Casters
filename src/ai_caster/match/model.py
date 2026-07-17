@@ -27,6 +27,26 @@ DEFAULT_ROUNDS_TO_WIN = 13
 # Number of recent rounds that feed the momentum calculation.
 MOMENTUM_WINDOW = 5
 
+# Round "stages" by seconds left on the round clock (default 1:55 round):
+#   Stage 1 (opening / map control)  — more than 1:30 left
+#   Stage 2 (mid-round)              — 1:30 down to 0:45 left
+#   Stage 3 (late / time pressure)   — under 0:45 left
+STAGE1_SECONDS_LEFT = 90.0
+STAGE2_SECONDS_LEFT = 45.0
+
+
+def round_stage_for(time_left: float | None, round_phase: str | None) -> int:
+    """The round stage (1/2/3) from the round clock, or 0 when not a live round."""
+    if (round_phase or "").lower() != "live":
+        return 0
+    if time_left is None:
+        return 1  # live but no clock reported yet — treat as the opening
+    if time_left > STAGE1_SECONDS_LEFT:
+        return 1
+    if time_left > STAGE2_SECONDS_LEFT:
+        return 2
+    return 3
+
 
 class Side(StrEnum):
     CT = "CT"
@@ -155,6 +175,7 @@ class LiveMatch:
     round_number: int = 0
     round_phase: str | None = None
     active_phase: str | None = None  # GSI phase_countdowns.phase: timeout_ct/paused/live/…
+    round_time_left: float | None = None  # seconds left on the live round clock
     bomb_state: str | None = None
     observed_steamid: str | None = None
     rounds_to_win: int = DEFAULT_ROUNDS_TO_WIN
@@ -209,6 +230,25 @@ class LiveMatch:
     def is_paused(self) -> bool:
         return (self.active_phase or "").lower() == "paused"
 
+    @property
+    def round_stage(self) -> int:
+        """Which stage of the round we're in (1 opening / 2 mid / 3 late), 0 if not live."""
+        return round_stage_for(self.round_time_left, self.round_phase)
+
+    def team_name(self, side: Side) -> str:
+        """The team's display name for ``side``, or the side label if unnamed.
+
+        On Faceit/ESEA the GSI feed carries real team names; elsewhere it's just
+        "CT"/"T". Callers use this so the broadcast says the team name when it can.
+        """
+        name = self.team(side).name
+        return name if name and name not in ("CT", "T") else side.value
+
+    @property
+    def has_team_names(self) -> bool:
+        """True when GSI is reporting real team names (not just CT/T)."""
+        return self.team_name(Side.CT) != "CT" or self.team_name(Side.T) != "T"
+
     def with_history(self, history: tuple[RoundRecord, ...]) -> LiveMatch:
         return replace(self, history=history)
 
@@ -242,6 +282,18 @@ def _side_from_str(value: str | None) -> Side | None:
     if value == "T":
         return Side.T
     return None
+
+
+def _round_time_left(state: GameState) -> float | None:
+    """Seconds left on the live round clock, from GSI's phase countdown."""
+    pc = state.phase_countdowns or {}
+    if pc.get("phase") != "live":
+        return None
+    ends_in = pc.get("phase_ends_in")
+    try:
+        return float(ends_in) if ends_in is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _active_weapon(weapons: dict | None) -> tuple[str | None, int | None, int | None]:
@@ -406,6 +458,7 @@ def build_live_match(
             if state.phase_countdowns and state.phase_countdowns.get("phase") is not None
             else None
         ),
+        round_time_left=_round_time_left(state),
         bomb_state=state.round.bomb if state.round else None,
         observed_steamid=(state.player.steamid if state.player else None),
         rounds_to_win=rounds_to_win,

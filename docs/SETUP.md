@@ -244,10 +244,18 @@ The AI knows how CS2 decides starting sides and will set the stage correctly:
   `anthropic` or `openai`/`local`, with an API key (and base URL for local
   OpenAI-compatible servers). A missing SDK or a provider error degrades back to
   Mock mid-broadcast so the show keeps talking.
-- **Less repetition:** both casters now vary their wording. The offline (Mock)
-  provider rotates through several phrasings per situation so you don't hear the
-  same line every bomb plant, and the real LLM providers are given the last few
-  spoken lines and told to say something fresh.
+- **Less repetition & no double-calls:** both casters vary their wording — the
+  offline (Mock) provider rotates through several phrasings per situation, and the
+  real LLM providers are given the last few spoken lines and told to say something
+  fresh. A guard also drops a line if it exactly repeats what that caster just said,
+  so you never hear the same call twice.
+- **More natural delivery:** the casters are prompted to sound like real human
+  broadcasters — spoken rhythm, contractions, genuine emotion, the odd interjection
+  — rather than reading the scoreboard. (This lands most strongly with a real LLM
+  provider; the offline voice is templated but conversational.)
+- **Team names (Faceit/ESEA):** when the GSI feed carries real team names — as
+  Faceit/ESEA matches do — the casters use them instead of "CT"/"T", so it sounds
+  like a proper broadcast. Pug/local servers without team names just say CT/T.
 - **The two casters talk to each other (banter):** they now share a live desk
   transcript, so the analyst can build on what the play-by-play just said instead
   of two announcers talking in isolation. On a marquee moment (a clutch), the
@@ -266,15 +274,25 @@ lull before starting, never interrupts live action, and yields entirely to repla
 Tune or disable it under `downtime` in settings (`enabled`, `min_delay_seconds`,
 `interval_seconds`).
 
-### Slow-round filler (quiet live rounds)
+### Round stages & map-control filler (quiet live rounds)
 
-Some rounds are slow and methodical — long stretches of a live round with no kills
-or plants. Rather than let those go silent, the desk adds light filler after a
-short quiet spell: the analyst talks map control and the economy read, and the
-play-by-play caster keeps the score and momentum in the picture. It only speaks
-during genuine live play (never over freeze-time, timeouts, or replays), stays
-low-key and non-interrupting, and resets the moment real action happens again.
-Tune or disable it under `downtime` (`slow_round_enabled`,
+The desk reads the round in three **stages** off the round clock (default 1:55):
+**Stage 1** opening (more than 1:30 left), **Stage 2** mid-round (1:30→0:45),
+**Stage 3** late (under 0:45). It fills the gaps accordingly when nothing else is
+happening:
+
+- **Opening map-control (Stage 1):** a few seconds into a live round the analyst
+  sets the scene around the map's key areas — e.g. *"FaZe looking to test Banana
+  early, chipping at Vitality — control there shapes the round."* It's map-aware
+  (Mirage, Inferno, Dust2, Nuke, Overpass, Ancient, Anubis, Vertigo, Train, Cache)
+  and framed as expectation, so it fills the start-of-round gap without claiming
+  anything GSI can't confirm.
+- **Mid-round (Stage 2):** the economy read, positioning and the score/momentum.
+- **Late round (Stage 3):** the clock becomes the story — time pressure on the Ts.
+
+It only speaks during genuine live play (never over freeze-time, timeouts, or
+replays), stays low-key and non-interrupting, and resets the moment real action
+happens. Tune it under `downtime` (`slow_round_enabled`, `round_intro_seconds`,
 `slow_round_after_seconds`, `slow_round_interval_seconds`).
 
 ---

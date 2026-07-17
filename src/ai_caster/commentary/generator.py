@@ -94,6 +94,16 @@ class CommentaryGenerator:
             return ()
         return tuple((turn.speaker, turn.text) for turn in self._conversation.recent(count))
 
+    def _is_duplicate(self, text: str) -> bool:
+        """True if ``text`` repeats the line this caster just said (guards a rare
+        double-call — e.g. a jittery feed or a provider echo)."""
+        norm = " ".join(text.lower().split())
+        with self._lock:
+            for prev in reversed(self._recent):
+                if prev.text:
+                    return " ".join(prev.text.lower().split()) == norm
+        return False
+
     # ------------------------------------------------------------------ #
     def start(self) -> None:
         if self.is_running:
@@ -149,7 +159,7 @@ class CommentaryGenerator:
             except Exception:  # noqa: BLE001 - keep the worker alive
                 _log.exception("Commentary generation failed")
                 continue
-            if line.text:
+            if line.text and not self._is_duplicate(line.text):
                 with self._lock:
                     self._recent.append(line)
                 self._bus.publish(CommentaryLineGenerated(line=line))

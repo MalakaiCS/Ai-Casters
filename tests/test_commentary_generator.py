@@ -113,3 +113,35 @@ def test_disabled_generator_produces_nothing():
         assert published == []
     finally:
         gen.dispose()
+
+
+class _FixedProvider:
+    """Always returns the same text — to exercise the duplicate guard."""
+
+    name = "fixed"
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    def generate(self, request: LLMRequest) -> str:
+        return self._text
+
+
+def test_worker_drops_a_consecutive_duplicate_line():
+    bus = EventBus()
+    lines: list = []
+    bus.subscribe(CommentaryLineGenerated, lines.append)
+    gen = CommentaryGenerator(bus, _FixedProvider("Insane clutch!"), Speaker.PLAY_BY_PLAY)
+    gen.start()
+    try:
+        # Two identical directives back to back must only speak once.
+        gen._on_directive(CommentaryDirectiveIssued(directive=_directive()))
+        gen._on_directive(CommentaryDirectiveIssued(directive=_directive()))
+        deadline = time.time() + 2.0
+        while len(gen.recent_lines()) < 1 and time.time() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.1)  # give the second one a chance to (not) publish
+    finally:
+        gen.stop()
+    texts = [event.line.text for event in lines]
+    assert texts.count("Insane clutch!") == 1  # the duplicate was suppressed

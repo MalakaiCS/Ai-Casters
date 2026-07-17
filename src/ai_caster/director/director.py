@@ -33,6 +33,7 @@ from ai_caster.director.directives import (
     Speaker,
 )
 from ai_caster.match.events import MatchModelUpdated
+from ai_caster.match.model import Side
 from ai_caster.replay.events import ReplayStateChanged
 from ai_caster.replay.models import ReplayType
 from ai_caster.vision.events import VisionStateUpdated
@@ -75,6 +76,8 @@ class CommentaryDirector:
         self._lock = threading.RLock()
         self._round_importance = 0.0
         self._series_importance = 0.0
+        self._ct_name = "CT"
+        self._t_name = "T"
         self._replay_active = False
         self._vision_replay = False
         self._current_priority = DirectivePriority.AMBIENT
@@ -146,6 +149,12 @@ class CommentaryDirector:
             with self._lock:
                 self._round_importance = getattr(event.match, "round_importance", 0.0)
                 self._series_importance = getattr(event.match, "series_importance", 0.0)
+                # Capture team names (Faceit/ESEA feeds carry them) so commentary can
+                # use them instead of "CT"/"T".
+                namer = getattr(event.match, "team_name", None)
+                if namer is not None:
+                    self._ct_name = namer(Side.CT)
+                    self._t_name = namer(Side.T)
 
     def _on_vision_updated(self, event: VisionStateUpdated) -> None:
         state = event.state
@@ -242,7 +251,7 @@ class CommentaryDirector:
             excitement=excitement,
             topic=policy.topic_for_event(event),
             interrupt=interrupt,
-            context=policy.context_for_event(event),
+            context=self._with_team_names(policy.context_for_event(event)),
         )
         self._occupy_mic(priority, speaker, now)
 
@@ -257,7 +266,7 @@ class CommentaryDirector:
                     excitement=round(excitement * 0.6, 4),
                     topic="round_analysis",
                     reason="post_round_handoff",
-                    context=policy.context_for_event(event),
+                    context=self._with_team_names(policy.context_for_event(event)),
                 )
             )
         # Live banter beat: on a marquee play-by-play call (e.g. a clutch), let the
@@ -277,7 +286,7 @@ class CommentaryDirector:
                     excitement=round(excitement * 0.7, 4),
                     topic="reaction",
                     reason="banter_reaction",
-                    context=policy.context_for_event(event),
+                    context=self._with_team_names(policy.context_for_event(event)),
                 )
             )
         return directives
@@ -320,6 +329,30 @@ class CommentaryDirector:
         return []
 
     # ------------------------------------------------------------------ #
+    def _team(self, side_label: str | None) -> str:
+        if side_label == "CT":
+            return self._ct_name
+        if side_label == "T":
+            return self._t_name
+        return side_label or ""
+
+    def _with_team_names(self, context: dict) -> dict:
+        """Add team-name facts so commentary can use them instead of CT/T.
+
+        Always exposes ``ct_team``/``t_team``; maps any winner/side in the context
+        to its team name (``winner_team``/``side_team``). When GSI has no real names
+        these are just "CT"/"T", so nothing changes.
+        """
+        context["ct_team"] = self._ct_name
+        context["t_team"] = self._t_name
+        winner = context.get("winner")
+        if winner in ("CT", "T"):
+            context["winner_team"] = self._team(winner)
+        side = context.get("side")
+        if side in ("CT", "T"):
+            context["side_team"] = self._team(side)
+        return context
+
     def _casting_open(self) -> bool:
         """Whether the cast-start gate (if any) has cleared the desk to talk."""
         return self._cast_gate is None or self._cast_gate.is_open

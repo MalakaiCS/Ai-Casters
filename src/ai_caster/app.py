@@ -182,6 +182,7 @@ class Application:
             slow_round_enabled=settings.downtime.slow_round_enabled,
             slow_round_after_seconds=settings.downtime.slow_round_after_seconds,
             slow_round_interval_seconds=settings.downtime.slow_round_interval_seconds,
+            round_intro_seconds=settings.downtime.round_intro_seconds,
             cast_gate=self.cast_gate,
         )
 

@@ -25,6 +25,7 @@ import threading
 import time
 from collections.abc import Callable
 
+from ai_caster.commentary.mapcontrol import area_for
 from ai_caster.core.logging import get_logger
 from ai_caster.director.directives import (
     CommentaryDirective,
@@ -54,6 +55,7 @@ class DowntimeCommentator:
         slow_round_enabled: bool = True,
         slow_round_after_seconds: float = 16.0,
         slow_round_interval_seconds: float = 18.0,
+        round_intro_seconds: float = 6.0,
         tick_seconds: float = 3.0,
         clock: Callable[[], float] = time.monotonic,
         cast_gate=None,  # noqa: ANN001 - CastGate | None
@@ -66,6 +68,7 @@ class DowntimeCommentator:
         self._slow_enabled = slow_round_enabled
         self._slow_after = slow_round_after_seconds
         self._slow_interval = slow_round_interval_seconds
+        self._intro_seconds = round_intro_seconds
         self._tick = tick_seconds
         self._clock = clock
 
@@ -78,6 +81,8 @@ class DowntimeCommentator:
         self._last_spoke: float = float("-inf")  # so the first fill isn't rate-limited
         self._rotation = 0
         self._quiet_rotation = 0
+        self._area_rotation = 0
+        self._intro_pending = False  # a fresh live round wants an opening map-control line
 
         self._running = False
         self._thread: threading.Thread | None = None
@@ -101,12 +106,15 @@ class DowntimeCommentator:
             else:
                 self._lull_since = None
             # Track when a live round begins so quiet-round filler measures the
-            # silence from the moment play actually started.
+            # silence from the moment play actually started. A fresh live round arms
+            # the opening map-control line (Stage 1).
             if is_live_round(match):
                 if self._live_since is None:
                     self._live_since = self._clock()
+                    self._intro_pending = True
             else:
                 self._live_since = None
+                self._intro_pending = False
 
     def _on_replay(self, event: ReplayStateChanged) -> None:
         self.on_replay(getattr(event.state, "active", False))
@@ -168,13 +176,24 @@ class DowntimeCommentator:
     def _tick_quiet(self, now: float, match: LiveMatch | None) -> CommentaryDirective | None:
         if not self._slow_enabled or not is_live_round(match) or self._live_since is None:
             return None
-        # Silence measured from the later of "round went live" and "last event".
+        stage = getattr(match, "round_stage", 1) or 1
+        # Opening map-control line: fill the gap early in Stage 1 (the start of the
+        # round) rather than waiting for the full quiet window.
+        if self._intro_pending and stage == 1:
+            if now - self._live_since >= self._intro_seconds and now - self._last_activity >= (
+                self._intro_seconds
+            ):
+                self._intro_pending = False
+                self._last_spoke = now
+                return self._build_map_control_directive(match)
+            return None
+        # Otherwise the regular stage-aware quiet fill on the slow-round cadence.
         quiet_since = max(self._live_since, self._last_activity)
         if now - quiet_since < self._slow_after:
             return None
         if now - self._last_spoke < self._slow_interval:
             return None
-        directive = self._build_quiet_directive(match, self._quiet_rotation)
+        directive = self._build_quiet_directive(match, self._quiet_rotation, stage)
         self._last_spoke = now
         self._quiet_rotation += 1
         return directive
@@ -224,10 +243,34 @@ class DowntimeCommentator:
             {"score": score, "round": rounds, "map": map_name},
         )
 
+    def _build_map_control_directive(self, match: LiveMatch | None) -> CommentaryDirective:
+        """The opening Stage-1 line: the fight for map control, framed as expectation."""
+        map_name = getattr(match, "map_name", None) or "this map"
+        area = area_for(map_name, self._area_rotation)
+        self._area_rotation += 1
+        context = {
+            "map": map_name,
+            "area": area,
+            "ct_team": self._team_name(match, Side.CT),
+            "t_team": self._team_name(match, Side.T),
+            "ct_buy": self._buy(match, Side.CT),
+            "t_buy": self._buy(match, Side.T),
+        }
+        return CommentaryDirective(
+            speaker=Speaker.ANALYST,
+            kind=DirectiveKind.ANALYZE,
+            priority=DirectivePriority.LOW,
+            excitement=0.25,
+            topic="map_control",
+            interrupt=False,
+            reason="quiet:map_control",
+            context=context,
+        )
+
     def _build_quiet_directive(
-        self, match: LiveMatch | None, rotation: int
+        self, match: LiveMatch | None, rotation: int, stage: int
     ) -> CommentaryDirective:
-        speaker, topic, context = self._plan_quiet(match, rotation)
+        speaker, topic, context = self._plan_quiet(match, rotation, stage)
         kind = DirectiveKind.CALL if speaker is Speaker.PLAY_BY_PLAY else DirectiveKind.ANALYZE
         return CommentaryDirective(
             speaker=speaker,
@@ -236,16 +279,36 @@ class DowntimeCommentator:
             excitement=0.2,
             topic=topic,
             interrupt=False,
-            reason="quiet:live",
+            reason=f"quiet:stage{stage}",
             context=context,
         )
 
-    def _plan_quiet(self, match: LiveMatch | None, rotation: int) -> tuple[Speaker, str, dict]:
-        """Rotate through light filler for a quiet live round, using real facts only."""
+    def _plan_quiet(
+        self, match: LiveMatch | None, rotation: int, stage: int
+    ) -> tuple[Speaker, str, dict]:
+        """Stage-aware light filler for a quiet live round, using real facts only."""
         score = self._score(match)
         map_name = getattr(match, "map_name", None) or "this map"
         rounds = getattr(match, "round_number", 0) or 0
-        # Three-way rotation: analyst positioning, analyst economy, play-by-play stat.
+        ct_team = self._team_name(match, Side.CT)
+        t_team = self._team_name(match, Side.T)
+
+        # Stage 3 (late round): the clock is the story.
+        if stage >= 3:
+            seconds = getattr(match, "round_time_left", None)
+            return (
+                Speaker.PLAY_BY_PLAY,
+                "late_round",
+                {
+                    "score": score,
+                    "seconds": int(seconds) if seconds is not None else None,
+                    "t_team": t_team,
+                    "ct_team": ct_team,
+                    "map": map_name,
+                },
+            )
+
+        # Stage 1/2 (mostly mid-round): rotate positioning / economy / stat.
         slot = rotation % 3
         if slot == 0:
             return (
@@ -253,6 +316,9 @@ class DowntimeCommentator:
                 "slow_round_positioning",
                 {
                     "map": map_name,
+                    "area": area_for(map_name, rotation),
+                    "ct_team": ct_team,
+                    "t_team": t_team,
                     "ct_alive": self._alive(match, Side.CT),
                     "t_alive": self._alive(match, Side.T),
                 },
@@ -264,6 +330,8 @@ class DowntimeCommentator:
                 {
                     "ct_buy": self._buy(match, Side.CT),
                     "t_buy": self._buy(match, Side.T),
+                    "ct_team": ct_team,
+                    "t_team": t_team,
                     "map": map_name,
                 },
             )
@@ -307,6 +375,9 @@ class DowntimeCommentator:
     def _team_name(match: LiveMatch | None, side: Side) -> str:
         if match is None:
             return "that team"
+        namer = getattr(match, "team_name", None)
+        if namer is not None:
+            return namer(side)
         return match.team(side).name or side.value
 
     # -- lifecycle ------------------------------------------------------ #

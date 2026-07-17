@@ -81,18 +81,32 @@ def opp_word(n: int) -> str:
     return f"{n} opponents" if n != 1 else "one opponent"
 
 
+def _winner_word(ctx: dict[str, Any]) -> tuple[str, bool]:
+    """The winner's name and whether it's a real team name (vs a CT/T side label)."""
+    team = ctx.get("winner_team")
+    if team and team not in ("CT", "T"):
+        return team, True
+    return (ctx.get("winner") or "winning"), False
+
+
 def _round_ended(ctx: dict[str, Any]) -> list[str]:
-    winner = ctx.get("winner") or "the round"
+    who, named = _winner_word(ctx)
     reason = ctx.get("reason", "")
     tail = {
         "bomb_exploded": " The bomb does the talking.",
         "bomb_defused": " Defused with time to spare.",
         "elimination": " A clean sweep.",
     }.get(reason, "")
+    if named:
+        return [
+            f"Round goes to {who}.{tail}",
+            f"That one's for {who}.{tail}",
+            f"{who} bank it.{tail}",
+        ]
     return [
-        f"Round goes to the {winner} side.{tail}",
-        f"That one's for the {winner} side.{tail}",
-        f"The {winner} side bank it.{tail}",
+        f"Round goes to the {who} side.{tail}",
+        f"That one's for the {who} side.{tail}",
+        f"The {who} side bank it.{tail}",
     ]
 
 
@@ -144,33 +158,69 @@ def _slow_round_stat(ctx: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _ct_label(ctx: dict[str, Any]) -> str:
+    team = ctx.get("ct_team")
+    return team if team and team not in ("CT", "T") else "the CTs"
+
+
+def _t_label(ctx: dict[str, Any]) -> str:
+    team = ctx.get("t_team")
+    return team if team and team not in ("CT", "T") else "the Ts"
+
+
 def _slow_round_economy(ctx: dict[str, Any]) -> list[str]:
     ct_buy = ctx.get("ct_buy") or "unknown"
     t_buy = ctx.get("t_buy") or "unknown"
+    ct, t = _ct_label(ctx), _t_label(ctx)
     return [
-        f"Economy-wise it's a {ct_buy} for the CTs against a {t_buy} on the T side — "
-        "that shapes how aggressive either team can afford to be.",
-        f"With the CTs on a {ct_buy} and the Ts on a {t_buy}, both sides will weigh "
-        "every duel carefully this round.",
-        f"A {ct_buy} buy versus a {t_buy} — the money situation is dictating the tempo here.",
+        f"Economy-wise it's a {ct_buy} for {ct} against a {t_buy} from {t} — "
+        "that shapes how aggressive either side can afford to be.",
+        f"With {ct} on a {ct_buy} and {t} on a {t_buy}, both weigh every duel this round.",
+        f"A {ct_buy} against a {t_buy} — the money's dictating the tempo here.",
     ]
 
 
 def _slow_round_positioning(ctx: dict[str, Any]) -> list[str]:
     map_name = ctx.get("map") or "this map"
+    area = ctx.get("area") or "the key areas"
+    ct, t = _ct_label(ctx), _t_label(ctx)
     ct_alive = ctx.get("ct_alive")
     t_alive = ctx.get("t_alive")
     lines = [
-        f"This is about map control on {map_name} — quiet now, but territory won early "
-        "decides how the round opens up.",
-        "Both teams trading space slowly, looking for the pick that breaks it open.",
-        "Utility being held back here; expect a coordinated hit once someone commits.",
+        f"Still a lot of this round about {area} — territory won there decides how it opens up.",
+        f"{t} feeling out the space, {ct} looking for the pick that breaks it open.",
+        f"Utility held back for now; expect a committed hit once someone reads {area}.",
     ]
     if ct_alive is not None and t_alive is not None:
         lines.append(
             f"Still {ct_alive} on {t_alive} with no contact — a real war of patience on {map_name}."
         )
     return lines
+
+
+def _map_control(ctx: dict[str, Any]) -> list[str]:
+    map_name = ctx.get("map") or "this map"
+    area = ctx.get("area") or "the middle"
+    ct, t = _ct_label(ctx), _t_label(ctx)
+    return [
+        f"Early doors on {map_name}, it's all about {area} — {t} will want that space "
+        f"and {ct} won't give it cheaply.",
+        f"Watch the fight for {area} to open the round; whoever wins it sets the tempo.",
+        f"{t} looking to test {area} early, chipping at {ct} to force a read — "
+        "control there shapes the whole round.",
+        f"This opening is about map control through {area}; expect the utility to start flying.",
+    ]
+
+
+def _late_round(ctx: dict[str, Any]) -> list[str]:
+    seconds = ctx.get("seconds")
+    t = _t_label(ctx)
+    clock = f"{seconds}s" if seconds is not None else "not long"
+    return [
+        f"Clock's a factor now — {clock} left and {t} have to commit.",
+        f"Down to {clock} on the round; time pressure squarely on {t}.",
+        f"{t} running out of round here — {clock} to make something happen.",
+    ]
 
 
 def _match_started(ctx: dict[str, Any]) -> list[str]:
@@ -224,20 +274,32 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     ],
     "MatchStarted": _match_started,
     "knife_round": _knife_round,
-    "MatchEnded": lambda c: [
-        (
-            f"That's the match — the {c.get('winner') or 'winning'} side take it "
-            f"{c.get('ct_score', 0)} to {c.get('t_score', 0)}."
-        ),
-        (
-            f"It's all over: the {c.get('winner') or 'winning'} side close it out "
-            f"{c.get('ct_score', 0)}-{c.get('t_score', 0)}."
-        ),
-    ],
-    "round_analysis": lambda c: [
-        f"Let's break that one down — the {c.get('winner') or 'winning'} side read it perfectly.",
-        f"Rewinding that round: the {c.get('winner') or 'winning'} side made the right call.",
-    ],
+    "MatchEnded": lambda c: (
+        [
+            f"That's the match — {_winner_word(c)[0]} take it "
+            f"{c.get('ct_score', 0)} to {c.get('t_score', 0)}.",
+            f"It's all over: {_winner_word(c)[0]} close it out "
+            f"{c.get('ct_score', 0)}-{c.get('t_score', 0)}.",
+        ]
+        if _winner_word(c)[1]
+        else [
+            f"That's the match — the {_winner_word(c)[0]} side take it "
+            f"{c.get('ct_score', 0)} to {c.get('t_score', 0)}.",
+            f"It's all over: the {_winner_word(c)[0]} side close it out "
+            f"{c.get('ct_score', 0)}-{c.get('t_score', 0)}.",
+        ]
+    ),
+    "round_analysis": lambda c: (
+        [
+            f"Let's break that one down — {_winner_word(c)[0]} read it perfectly.",
+            f"Rewinding that round: {_winner_word(c)[0]} made the right call.",
+        ]
+        if _winner_word(c)[1]
+        else [
+            f"Let's break that one down — the {_winner_word(c)[0]} side read it perfectly.",
+            f"Rewinding that round: the {_winner_word(c)[0]} side made the right call.",
+        ]
+    ),
     "replay": lambda c: [
         f"Here's another look at that {c.get('replay_type', 'moment')}.",
         f"Take another look at the {c.get('replay_type', 'moment')} here.",
@@ -272,6 +334,9 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "slow_round_stat": _slow_round_stat,
     "slow_round_economy": _slow_round_economy,
     "slow_round_positioning": _slow_round_positioning,
+    # -- round stages: opening map control + late-round time pressure ---- #
+    "map_control": _map_control,
+    "late_round": _late_round,
 }
 
 
