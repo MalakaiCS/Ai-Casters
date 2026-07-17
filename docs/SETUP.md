@@ -294,10 +294,12 @@ Tune or disable it under `downtime` (`slow_round_enabled`,
   For local development (running from source, not a packaged build) an offline
   backend is used so you can sign in with any valid email + password.
 - **Roles.** Every user has a role — **Owner, Founder, Admin, Staff, Partner** or
-  **User** (the default). Roles gate features: **Staff and above** can open
-  **Train the AI**; **Admin and above** can open **Team & Roles** to promote or
-  demote others (a manager can only assign roles below their own). Roles live in
-  Supabase; set your first **Owner** once via SQL, then manage everyone in-app —
+  **User** (the default). Roles gate features, grouped under an **Admin** section in
+  the sidebar that a plain **User never sees**: **Staff and above** get **Train the
+  AI**; **Admin and above** also get **Team & Roles** to promote or demote others (a
+  manager can only assign roles below their own). The sidebar updates the moment your
+  role does (sign-in, or the background role refresh). Roles live in Supabase; set
+  your first **Owner** once via SQL, then manage everyone in-app —
   see [`SUPABASE.md` §5c](SUPABASE.md).
 - **Account & License** view: see your tier and entitlements, manage devices, and
   sign out.

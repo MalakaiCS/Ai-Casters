@@ -65,6 +65,23 @@ def test_can_manage_roles_is_admin_and_above(role, expected):
     assert can_manage_roles(role) is expected
 
 
+@pytest.mark.parametrize(
+    ("role", "sees_train", "sees_team"),
+    [
+        (Role.USER, False, False),  # plain user: no Admin section at all
+        (Role.PARTNER, False, False),
+        (Role.STAFF, True, False),  # can train, but not manage the team
+        (Role.ADMIN, True, True),
+        (Role.OWNER, True, True),
+    ],
+)
+def test_admin_section_visibility_contract(role, sees_train, sees_team):
+    # The sidebar shows "Train the AI" via can_train and "Team & Roles" via
+    # can_manage_roles; a User sees neither (the Admin section is hidden entirely).
+    assert can_train(role) is sees_train
+    assert can_manage_roles(role) is sees_team
+
+
 def test_assignable_roles_are_strictly_below_actor():
     # An admin can assign Staff/Partner/User but not Admin/Founder/Owner.
     assignable = assignable_roles(Role.ADMIN)
