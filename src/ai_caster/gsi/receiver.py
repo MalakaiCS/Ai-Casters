@@ -10,6 +10,7 @@ FastAPI transport (:mod:`ai_caster.gsi.server`) is a thin adapter over this.
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from pydantic import ValidationError
@@ -57,6 +58,7 @@ class GSIReceiver:
         self._last_payload_at: datetime | None = None
         self._connected = False
         self._payload_count = 0
+        self._recorder: Callable[[dict], None] | None = None
 
     # ------------------------------------------------------------------ #
     # Properties
@@ -83,7 +85,7 @@ class GSIReceiver:
     # Core
     # ------------------------------------------------------------------ #
     def handle_payload(self, payload: dict) -> GameState:
-        """Authenticate, parse and dispatch a raw GSI payload.
+        """Authenticate, (optionally) record, parse and dispatch a raw GSI payload.
 
         Raises
         ------
@@ -93,7 +95,25 @@ class GSIReceiver:
             If the payload cannot be parsed into a :class:`GameState`.
         """
         self._authenticate(payload)
+        recorder = self._recorder
+        if recorder is not None:
+            try:
+                recorder(payload)
+            except Exception:  # noqa: BLE001 - recording must never break the live feed
+                _log.exception("GSI recorder failed")
+        return self._ingest(payload, detail="GSI feed active")
 
+    def replay_payload(self, payload: dict) -> GameState:
+        """Feed a recorded payload back through the pipeline (no auth, no re-record).
+
+        Used by rehearsal mode: a saved GSI capture is replayed so the whole
+        commentary stack runs exactly as it would live, on any machine, with no
+        CS2 running. Authentication is skipped (recordings carry no token) and the
+        recorder tap is bypassed so a replay can't be recorded onto itself.
+        """
+        return self._ingest(payload, detail="Rehearsal playback")
+
+    def _ingest(self, payload: dict, *, detail: str) -> GameState:
         try:
             state = GameState.model_validate(payload)
         except ValidationError:
@@ -110,7 +130,7 @@ class GSIReceiver:
             self._connected = True
 
         if not was_connected:
-            self._bus.publish(GSIConnectionChanged(connected=True, detail="GSI feed active"))
+            self._bus.publish(GSIConnectionChanged(connected=True, detail=detail))
             _log.info("GSI feed connected (map=%s)", state.map_name)
 
         self._bus.publish(GSIStateUpdated(game_state=state))
@@ -124,6 +144,11 @@ class GSIReceiver:
             state.observed_player_name,
         )
         return state
+
+    def set_recorder(self, recorder: Callable[[dict], None] | None) -> None:
+        """Install (or clear) a tap invoked with every authenticated live payload."""
+        with self._lock:
+            self._recorder = recorder
 
     def mark_disconnected(self, detail: str = "GSI feed idle") -> None:
         """Flag the feed as disconnected and emit an event (idempotent)."""

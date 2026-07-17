@@ -1,0 +1,71 @@
+name: Build Windows installer
+
+# Builds AICasters-Setup.exe on Windows and uploads it as a downloadable
+# workflow artifact. Runs on pushes/PRs and can be triggered manually.
+# (Native .exe builds require Windows — this is the only place they happen.)
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "src/**"
+      - "packaging/**"
+      - "pyproject.toml"
+      - ".github/workflows/build-installer.yml"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install app + build tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[ui,capture,vision,ai,voice,obs,hotkeys,diagnostics]" pyinstaller youtube-transcript-api
+
+      - name: Inject deployment defaults
+        shell: pwsh
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          $manifestUrl = "${{ github.server_url }}/${{ github.repository }}/releases/latest/download/manifest.json"
+          $cfg = [ordered]@{ updater = [ordered]@{ manifest_url = $manifestUrl } }
+          if ($env:SUPABASE_URL -and $env:SUPABASE_ANON_KEY) {
+            $cfg["account"] = [ordered]@{ provider = "supabase"; supabase_url = $env:SUPABASE_URL; supabase_anon_key = $env:SUPABASE_ANON_KEY }
+          }
+          $cfg | ConvertTo-Json -Depth 6 | Set-Content -Path src/ai_caster/deploy_defaults.json -Encoding utf8
+          Write-Host "Baked deployment defaults (updater manifest; Supabase if secrets set)."
+
+      - name: Freeze app (PyInstaller)
+        run: pyinstaller packaging/ai_caster.spec --noconfirm
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (python -c "import ai_caster; print(ai_caster.__version__)").Trim()
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            /DAppVersion=${{ steps.ver.outputs.version }} packaging\installer.iss
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AICasters-Setup-${{ steps.ver.outputs.version }}
+          path: dist/installer/AICasters-Setup.exe
+          if-no-files-found: error

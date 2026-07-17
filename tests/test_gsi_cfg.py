@@ -7,7 +7,7 @@ from ai_caster.gsi.cfg import build_gsi_config, write_gsi_config
 
 def test_build_config_contains_uri_and_token():
     text = build_gsi_config(host="127.0.0.1", port=3111, auth_token="tok123")
-    assert 'http://127.0.0.1:3111/' in text
+    assert "http://127.0.0.1:3111/" in text
     assert '"token"    "tok123"' in text
     # Requests key components used by the caster.
     assert '"allplayers_state"' in text

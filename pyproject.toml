@@ -19,12 +19,67 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
     "platformdirs>=4.2",
+    "numpy>=1.26",
+    # Bundled CA store so HTTPS to the account service verifies in a frozen build
+    # (a packaged app may not reach the OS trust store).
+    "certifi>=2024.2",
 ]
 
 [project.optional-dependencies]
 # Desktop UI. Kept optional so headless CI can run the domain test suite
 # without a display server / Qt binaries.
 ui = ["PySide6>=6.6"]
+
+# Real video-capture backends (Module 6). Optional so the synthetic source and
+# the full domain test suite run without native capture libraries. Uses the
+# headless OpenCV build to avoid a libGL dependency.
+capture = [
+    "opencv-python-headless>=4.9",
+    "mss>=9.0",
+    "pygetwindow>=0.0.9",
+]
+
+# Model-backed computer vision (Module 7). Optional: the analytic detectors run
+# on NumPy alone; this adds the ONNX runtime for a user-supplied detection model.
+vision = ["onnxruntime>=1.17"]
+
+# Commentary AI backends (Modules 11 & 12). Optional: the default MOCK provider
+# needs nothing; these enable the Anthropic / OpenAI-compatible providers.
+ai = [
+    "anthropic>=0.49",
+    "openai>=1.30",
+]
+
+# Voice output backends (Modules 13 & 14). Optional: the synthetic TTS and the
+# null sinks need nothing; these add real OS speech (pyttsx3) and device output
+# (sounddevice) for production casting.
+voice = [
+    "pyttsx3>=2.90",
+    "sounddevice>=0.4",
+]
+
+# OBS integration (Module 16). Optional: the null controller needs nothing; this
+# adds the OBS WebSocket client for real scene switching.
+obs = ["obsws-python>=1.6"]
+
+# Global hotkeys (M9). Optional: the null backend needs nothing; this adds the
+# OS keyboard hook used to register true global hotkeys.
+hotkeys = ["pynput>=1.7"]
+
+# Diagnostics resource metrics (M9). Optional: CPU/memory degrade gracefully
+# without it; this adds accurate per-process CPU and memory sampling.
+diagnostics = ["psutil>=5.9"]
+
+# Offline training from AUTHORIZED recordings (Module 18). Optional: the pipeline
+# analyses text transcripts with no extra deps; this adds local speech-to-text
+# (faster-whisper) so authorized recordings can be transcribed to text + timing
+# for general pacing/vocabulary learning. No voice model is ever built.
+training = [
+    "faster-whisper>=1.0",
+    # Fetches YouTube caption transcripts (text only) for the authorized
+    # "learn from a link" path — no audio/video is ever downloaded.
+    "youtube-transcript-api>=0.6",
+]
 
 dev = [
     "pytest>=8.0",
@@ -40,7 +95,8 @@ ai-caster = "ai_caster.__main__:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ai_caster = ["py.typed"]
+ai_caster = ["py.typed", "deploy_defaults.json"]
+"ai_caster.ui.assets" = ["*.png", "*.ico"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,0 +1,175 @@
+"""Tests for the authorized YouTube-captions training path."""
+
+from __future__ import annotations
+
+import pytest
+
+import ai_caster.training.youtube as yt
+from ai_caster.training.guardrails import AuthorizationError
+from ai_caster.training.models import Authorization, TranscriptSegment
+from ai_caster.training.pipeline import TrainingPipeline
+from ai_caster.training.youtube import (
+    YouTubeTranscriptError,
+    _fetch_raw,
+    _pick_transcript,
+    _to_segments,
+    extract_video_id,
+)
+
+AUTHORIZED = Authorization(authorized=True, consent_reference="OWN-YT-2026", rights_holder="Me")
+UNAUTHORIZED = Authorization(authorized=False)
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+        ("https://youtu.be/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+        ("https://youtube.com/watch?v=dQw4w9WgXcQ&t=42s", "dQw4w9WgXcQ"),
+        ("https://www.youtube.com/shorts/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+        ("https://m.youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+        ("dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+    ],
+)
+def test_extract_video_id(url, expected):
+    assert extract_video_id(url) == expected
+
+
+def test_extract_video_id_rejects_non_youtube():
+    with pytest.raises(YouTubeTranscriptError):
+        extract_video_id("https://example.com/watch?x=1")
+
+
+def test_to_segments_maps_and_filters():
+    raw = [
+        {"text": "clutch play here", "start": 0.0, "duration": 2.0},
+        {"text": "[Music]", "start": 2.0, "duration": 1.0},  # dropped
+        {"text": "  ", "start": 3.0, "duration": 1.0},  # dropped
+        {"text": "he takes the round", "start": 4.0, "duration": 1.5},
+    ]
+    segments = _to_segments(raw)
+    assert [s.text for s in segments] == ["clutch play here", "he takes the round"]
+    assert segments[0].role == "commentator"
+    assert segments[1].end == pytest.approx(5.5)
+
+
+_RAW = [{"text": "hi", "start": 0.0, "duration": 1.0}]
+
+
+class _OldApi:
+    """youtube-transcript-api <= 0.6.x: classmethod get_transcript -> list[dict]."""
+
+    @classmethod
+    def get_transcript(cls, video_id, languages=None):
+        return _RAW
+
+
+class _Snippet:
+    def __init__(self, text, start, duration):
+        self.text, self.start, self.duration = text, start, duration
+
+
+class _NewApi:
+    """youtube-transcript-api >= 1.0: instance.fetch -> FetchedTranscript."""
+
+    class _Fetched:
+        def to_raw_data(self):
+            return _RAW
+
+    def fetch(self, video_id, languages=None):
+        return self._Fetched()
+
+
+class _NewApiIterable:
+    """>= 1.0 variant whose FetchedTranscript is only iterable (no to_raw_data)."""
+
+    class _Fetched:
+        def __iter__(self):
+            return iter([_Snippet("hi", 0.0, 1.0)])
+
+    def fetch(self, video_id, languages=None):
+        return self._Fetched()
+
+
+@pytest.mark.parametrize("api_cls", [_OldApi, _NewApi, _NewApiIterable])
+def test_fetch_raw_handles_both_api_generations(api_cls):
+    raw = _fetch_raw(api_cls, "vid", ["en"])
+    assert raw == _RAW
+
+
+class _Track:
+    def __init__(self, language_code, is_generated):
+        self.language_code = language_code
+        self.is_generated = is_generated
+
+    def fetch(self):
+        return [
+            {"text": f"{self.language_code}/{self.is_generated}", "start": 0.0, "duration": 1.0}
+        ]
+
+
+def test_pick_transcript_prefers_manual_in_requested_language():
+    tracks = [
+        _Track("es", False),
+        _Track("en", True),  # generated en
+        _Track("en", False),  # manual en <- preferred
+    ]
+    assert _pick_transcript(tracks, ["en"]).language_code == "en"
+    assert _pick_transcript(tracks, ["en"]).is_generated is False
+
+
+def test_pick_transcript_falls_back_to_generated_then_any():
+    # Only a generated track in another language: still usable.
+    only_generated = [_Track("de", True)]
+    assert _pick_transcript(only_generated, ["en"]).language_code == "de"
+    with pytest.raises(YouTubeTranscriptError):
+        _pick_transcript([], ["en"])
+
+
+class _ApiWithFallback:
+    """1.x api whose direct fetch fails, forcing the list() fallback path."""
+
+    def fetch(self, video_id, languages=None):
+        raise RuntimeError("no transcript in requested languages")
+
+    def list(self, video_id):
+        return [_Track("en", True)]  # an auto-generated track exists
+
+
+def test_fetch_raw_falls_back_to_listed_track():
+    raw = _fetch_raw(_ApiWithFallback, "vid", ["en"])
+    assert raw == [{"text": "en/True", "start": 0.0, "duration": 1.0}]
+
+
+def test_pipeline_add_youtube_authorized(monkeypatch):
+    def fake_fetch(url, *, languages=("en",)):
+        return [
+            TranscriptSegment("caster", "great positioning", 0.0, 2.0),
+            TranscriptSegment("analyst", "textbook execute", 2.0, 4.0),
+        ]
+
+    monkeypatch.setattr(yt, "fetch_youtube_transcript", fake_fetch)
+    # pipeline.add_youtube imports fetch_youtube_transcript from the module, so patch there too.
+    import ai_caster.training.pipeline as pipe_mod  # noqa: F401
+
+    pipeline = TrainingPipeline()
+    source = pipeline.add_youtube("https://youtu.be/dQw4w9WgXcQ", authorization=AUTHORIZED)
+    assert source in pipeline.sources
+    assert source.source_id == "dQw4w9WgXcQ"
+    # Roles are anonymized to generic labels.
+    assert [s.role for s in source.segments] == ["commentator", "analyst"]
+
+
+def test_pipeline_add_youtube_unauthorized_raises(monkeypatch):
+    calls = {"fetched": False}
+
+    def fake_fetch(url, *, languages=("en",)):
+        calls["fetched"] = True
+        return []
+
+    monkeypatch.setattr(yt, "fetch_youtube_transcript", fake_fetch)
+    pipeline = TrainingPipeline()
+    with pytest.raises(AuthorizationError):
+        pipeline.add_youtube("https://youtu.be/dQw4w9WgXcQ", authorization=UNAUTHORIZED)
+    # Refused before any network work.
+    assert calls["fetched"] is False

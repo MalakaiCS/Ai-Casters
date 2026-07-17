@@ -56,12 +56,24 @@ class SettingsView(QWidget):
         actions = QHBoxLayout()
         save_btn = QPushButton("Save")
         save_btn.clicked.connect(self._on_save)
-        export_btn = QPushButton("Export CS2 GSI config…")
+        install_btn = QPushButton("Install GSI config into CS2")
+        install_btn.setToolTip(
+            "Find your CS2 folder and drop the config in automatically. It works "
+            "alongside a HUD manager (Lexogrine, etc.) — CS2 feeds every config at once."
+        )
+        install_btn.clicked.connect(self._on_install_gsi)
+        export_btn = QPushButton("Export config to a folder…")
         export_btn.clicked.connect(self._on_export)
         actions.addWidget(save_btn)
+        actions.addWidget(install_btn)
         actions.addWidget(export_btn)
         actions.addStretch(1)
         root.addLayout(actions)
+
+        self._gsi_status = QLabel("")
+        self._gsi_status.setWordWrap(True)
+        self._gsi_status.setStyleSheet("color: #888;")
+        root.addWidget(self._gsi_status)
 
         # ---- read-only overview of everything else ---------------------- #
         other_box = QGroupBox("All settings (read-only preview)")
@@ -101,6 +113,39 @@ class SettingsView(QWidget):
         self._overview.setPlainText(self._manager.settings.model_dump_json(indent=2))
         QMessageBox.information(
             self, "Saved", "Settings saved. GSI auth is applied to the running receiver."
+        )
+
+    def _on_install_gsi(self) -> None:
+        from ai_caster.gsi.cfg import write_gsi_config
+        from ai_caster.gsi.locate import find_cs2_cfg_dir
+
+        gsi = self._manager.settings.gsi
+        cfg_dir = find_cs2_cfg_dir()
+        if cfg_dir is None:
+            self._gsi_status.setText(
+                "Couldn't find your CS2 folder automatically — use "
+                "“Export config to a folder…” and drop the file into "
+                "…/Counter-Strike Global Offensive/game/csgo/cfg/, then restart CS2."
+            )
+            self._on_export()
+            return
+        try:
+            path = write_gsi_config(
+                cfg_dir, host=gsi.host, port=gsi.port, auth_token=gsi.auth_token
+            )
+        except OSError as exc:
+            self._gsi_status.setText(f"Couldn't write the config: {exc}")
+            return
+        self._gsi_status.setText(
+            f"Installed to {path}. Fully restart CS2 (not just the map) and the feed "
+            "will connect. It runs alongside any HUD manager you already use."
+        )
+        QMessageBox.information(
+            self,
+            "GSI config installed",
+            f"Installed to:\n{path}\n\nFully restart CS2 and the GSI feed will connect. "
+            "This works alongside Lexogrine / other HUD managers — CS2 feeds every "
+            "config at once.",
         )
 
     def _on_export(self) -> None:

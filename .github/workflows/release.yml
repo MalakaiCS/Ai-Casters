@@ -1,0 +1,121 @@
+name: Release
+
+# On a version tag (e.g. v0.1.0): build AICasters-Setup.exe on Windows and
+# publish a GitHub Release with the installer attached for download.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to create (e.g. v0.1.0)"
+        required: true
+        default: "v0.1.0"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install app + build tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[ui,capture,vision,ai,voice,obs,hotkeys,diagnostics]" pyinstaller youtube-transcript-api
+
+      - name: Inject deployment defaults
+        shell: pwsh
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          # Always bake the auto-updater manifest URL (public; derived from the
+          # repo). The 'releases/latest/download' URL always serves the newest
+          # release's manifest.json.
+          $manifestUrl = "${{ github.server_url }}/${{ github.repository }}/releases/latest/download/manifest.json"
+          $cfg = [ordered]@{ updater = [ordered]@{ manifest_url = $manifestUrl } }
+          if ($env:SUPABASE_URL -and $env:SUPABASE_ANON_KEY) {
+            $cfg["account"] = [ordered]@{ provider = "supabase"; supabase_url = $env:SUPABASE_URL; supabase_anon_key = $env:SUPABASE_ANON_KEY }
+            Write-Host "Baked Supabase + updater deployment defaults."
+          } else {
+            Write-Host "Baked updater deployment defaults (no Supabase secrets)."
+          }
+          $cfg | ConvertTo-Json -Depth 6 | Set-Content -Path src/ai_caster/deploy_defaults.json -Encoding utf8
+
+      - name: Freeze app (PyInstaller)
+        run: pyinstaller packaging/ai_caster.spec --noconfirm
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (python -c "import ai_caster; print(ai_caster.__version__)").Trim()
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            /DAppVersion=${{ steps.ver.outputs.version }} packaging\installer.iss
+
+      - name: Resolve release tag
+        id: tag
+        shell: pwsh
+        run: |
+          # Tag comes from the pushed ref, or the manual-dispatch input.
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $tag = "${{ github.event.inputs.version }}"
+          } else {
+            $tag = "${env:GITHUB_REF_NAME}"
+          }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build update manifest
+        shell: pwsh
+        run: |
+          # The auto-updater fetches this JSON, compares 'version' to the running
+          # build, and verifies the download against 'sha256'.
+          $exe = "dist/installer/AICasters-Setup.exe"
+          $sha = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
+          $assetUrl = "${{ github.server_url }}/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/AICasters-Setup.exe"
+          $manifest = [ordered]@{
+            version   = "${{ steps.ver.outputs.version }}"
+            url       = $assetUrl
+            notes     = "AI Casters ${{ steps.ver.outputs.version }}"
+            mandatory = $false
+            sha256    = $sha
+          }
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path dist/installer/manifest.json -Encoding utf8
+          Get-Content dist/installer/manifest.json
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.tag.outputs.tag }}"
+          # Replace any existing release for this tag so re-cutting the same
+          # version (e.g. to bake in newly-added secrets) works cleanly. Removing
+          # the tag too lets `gh release create` re-point it at the current commit.
+          gh release delete "$tag" --yes --cleanup-tag 2>$null
+          # gh creates the tag at the current commit if it does not exist yet.
+          # manifest.json is attached so releases/latest/download/manifest.json
+          # always points at the newest release for the auto-updater.
+          gh release create "$tag" `
+            "dist/installer/AICasters-Setup.exe" `
+            "dist/installer/manifest.json" `
+            --target "${env:GITHUB_SHA}" `
+            --title "AI Casters ${{ steps.ver.outputs.version }}" `
+            --notes "Autonomous AI commentary for Counter-Strike 2. Download **AICasters-Setup.exe** below and run it to install. See docs/SETUP.md for configuration."

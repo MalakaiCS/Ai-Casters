@@ -39,3 +39,9 @@ logs/
 *.sqlite
 *.sqlite3
 /local/
+
+# Windows packaging build venv
+.buildenv/
+
+# Deployment defaults (baked at build time from CI secrets; never committed)
+src/ai_caster/deploy_defaults.json

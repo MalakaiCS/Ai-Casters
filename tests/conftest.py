@@ -53,3 +53,79 @@ def make_gsi_payload(token: str | None = "secret") -> dict:
     if token is not None:
         payload["auth"] = {"token": token}
     return payload
+
+
+def make_player(
+    steamid: str,
+    name: str,
+    team: str,
+    *,
+    health: int = 100,
+    kills: int = 0,
+    deaths: int = 0,
+    assists: int = 0,
+    mvps: int = 0,
+    score: int = 0,
+    round_kills: int = 0,
+    round_killhs: int = 0,
+    round_totaldmg: int = 0,
+    money: int = 800,
+    equip_value: int = 200,
+) -> dict:
+    """Build one ``allplayers`` entry with full state + match stats."""
+    return {
+        "_steamid": steamid,
+        "name": name,
+        "team": team,
+        "state": {
+            "health": health,
+            "armor": 0,
+            "money": money,
+            "equip_value": equip_value,
+            "round_kills": round_kills,
+            "round_killhs": round_killhs,
+            "round_totaldmg": round_totaldmg,
+        },
+        "match_stats": {
+            "kills": kills,
+            "deaths": deaths,
+            "assists": assists,
+            "mvps": mvps,
+            "score": score,
+        },
+    }
+
+
+def make_state(
+    players: list[dict],
+    *,
+    map_name: str = "de_mirage",
+    map_phase: str = "live",
+    round_no: int = 0,
+    round_phase: str = "live",
+    bomb: str | None = None,
+    win_team: str | None = None,
+    ct_score: int = 0,
+    t_score: int = 0,
+    ct_name: str = "Team A",
+    t_name: str = "Team B",
+    provider_ts: int | None = None,
+    observed: str | None = None,
+) -> dict:
+    """Assemble a full spectator GSI payload dict from player descriptors."""
+    allplayers = {p["_steamid"]: {k: v for k, v in p.items() if k != "_steamid"} for p in players}
+    payload: dict = {
+        "provider": {"name": "cs2", "appid": 730, "timestamp": provider_ts or 1000},
+        "map": {
+            "name": map_name,
+            "phase": map_phase,
+            "round": round_no,
+            "team_ct": {"score": ct_score, "name": ct_name},
+            "team_t": {"score": t_score, "name": t_name},
+        },
+        "round": {"phase": round_phase, "bomb": bomb, "win_team": win_team},
+        "allplayers": allplayers,
+    }
+    if observed:
+        payload["player"] = {"steamid": observed, "name": "observed"}
+    return payload

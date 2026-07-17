@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import logging.handlers
+import sys
 from pathlib import Path
 
 _ROOT_LOGGER_NAME = "ai_caster"
@@ -71,7 +72,10 @@ def configure_logging(
 
     formatter = _UtcFormatter(_DEFAULT_FORMAT, datefmt=_DATE_FORMAT)
 
-    if console:
+    # A windowed (no-console) build has ``sys.stderr is None``; attaching a stream
+    # handler to it would crash on the first emit. Only add the console handler
+    # when there is a real stream to write to.
+    if console and sys.stderr is not None:
         stream = logging.StreamHandler()
         stream.setFormatter(formatter)
         root.addHandler(stream)
