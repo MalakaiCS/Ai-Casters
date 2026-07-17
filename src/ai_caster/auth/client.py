@@ -134,6 +134,29 @@ class AuthClient:
         self._set_session(result.session, detail="refreshed")
         return True
 
+    def refresh_role(self) -> bool:
+        """Re-read the signed-in user's role from the backend (best-effort).
+
+        Used after restoring a saved session so the correct role is applied even if
+        the stored session predates role persistence (e.g. the first launch after
+        an update). Backends without server-side roles simply no-op. Returns True
+        if the role changed.
+        """
+        with self._lock:
+            current = self._session
+        fetch = getattr(self._backend, "with_role", None)
+        if current is None or fetch is None:
+            return False
+        try:
+            updated = fetch(current)
+        except Exception:  # noqa: BLE001 - a role refresh must never break the app
+            _log.debug("Role refresh failed", exc_info=True)
+            return False
+        if updated is None or updated.account.role == current.account.role:
+            return False
+        self._set_session(updated, detail="role refreshed")
+        return True
+
     def logout(self) -> None:
         with self._lock:
             current = self._session

@@ -66,6 +66,39 @@ def test_session_store_roundtrip(tmp_path: Path):
     assert store.load() is None
 
 
+def test_session_store_persists_role(tmp_path: Path):
+    # Regression: a restored session (e.g. after an auto-update restart) must keep
+    # the real RBAC role instead of silently defaulting to "user".
+    store = SessionStore(tmp_path / "session.json")
+    session = AuthSession(
+        account=Account(user_id="u1", email="a@b.c", role="admin", tier="pro"),
+        access_token="tok",
+    )
+    store.save(session)
+    loaded = store.load()
+    assert loaded is not None
+    assert loaded.account.role == "admin"
+
+
+def test_client_restore_keeps_role(tmp_path: Path):
+    # A non-expired restored session should surface the persisted role to the app.
+    store = SessionStore(tmp_path / "session.json")
+    store.save(
+        AuthSession(
+            account=Account(user_id="u1", email="a@b.c", role="owner"),
+            access_token="tok",
+            expires_at=datetime(2030, 1, 1, tzinfo=UTC),
+        )
+    )
+    client = AuthClient(
+        EventBus(), OfflineAuthBackend(), device_id="dev", store=store, remember=True
+    )
+    assert client.restore() is True
+    assert client.account is not None
+    assert client.account.role == "owner"
+    assert client.account.role_enum.value == "owner"
+
+
 def test_session_store_ignores_corrupt_file(tmp_path: Path):
     path = tmp_path / "session.json"
     path.write_text("{ broken", encoding="utf-8")
@@ -174,3 +207,50 @@ def test_client_signup_confirmation_required_does_not_sign_in(tmp_path: Path):
     result = client.signup("fresh@example.com", "password123")
     assert result.ok and result.session is None
     assert not client.is_authenticated  # must wait for email confirmation
+
+
+def test_refresh_role_updates_and_republishes(tmp_path: Path):
+    # A backend that reports a fresher role than the restored session carries.
+    class _RoleBackend(OfflineAuthBackend):
+        def with_role(self, session):
+            from dataclasses import replace
+
+            return replace(session, account=replace(session.account, role="admin"))
+
+    bus = EventBus()
+    events: list = []
+    bus.subscribe(AuthStateChanged, events.append)
+    store = SessionStore(tmp_path / "s.json")
+    store.save(
+        AuthSession(
+            account=Account(user_id="u1", email="a@b.c", role="user"),
+            access_token="tok",
+            expires_at=datetime(2030, 1, 1, tzinfo=UTC),
+        )
+    )
+    client = AuthClient(bus, _RoleBackend(), device_id="d", store=store, remember=True)
+    assert client.restore()
+    assert client.account.role == "user"  # stale role from the store
+    assert client.refresh_role() is True
+    assert client.account.role == "admin"  # corrected from the backend
+    # Re-saved with the corrected role, so the next restart is right too.
+    assert store.load().account.role == "admin"
+    assert any(e.authenticated and e.detail == "role refreshed" for e in events)
+
+
+def test_refresh_role_noop_without_backend_support(tmp_path: Path):
+    # OfflineAuthBackend has no with_role -> refresh_role is a harmless no-op.
+    store = SessionStore(tmp_path / "s.json")
+    store.save(
+        AuthSession(
+            account=Account(user_id="u1", email="a@b.c", role="owner"),
+            access_token="tok",
+            expires_at=datetime(2030, 1, 1, tzinfo=UTC),
+        )
+    )
+    client = AuthClient(
+        EventBus(), OfflineAuthBackend(), device_id="d", store=store, remember=True
+    )
+    client.restore()
+    assert client.refresh_role() is False
+    assert client.account.role == "owner"

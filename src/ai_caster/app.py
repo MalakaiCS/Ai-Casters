@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import threading
 
 from ai_caster import __version__
 from ai_caster.auth.client import AuthClient
@@ -379,7 +380,14 @@ class Application:
         updates — each guarded so a failure never blocks the broadcast."""
         if self.settings.account.auto_login:
             try:
-                self.auth.restore()
+                if self.auth.restore():
+                    # A restored session may carry a stale role (e.g. saved before
+                    # role persistence, or changed server-side while offline).
+                    # Refresh it off the startup path so the UI gets the right role
+                    # without a manual sign-out/in.
+                    threading.Thread(
+                        target=self.auth.refresh_role, name="role-refresh", daemon=True
+                    ).start()
             except Exception:  # noqa: BLE001 - sign-in must not block startup
                 self._log.exception("Session restore failed")
 

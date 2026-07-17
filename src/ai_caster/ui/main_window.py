@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QPushButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -62,7 +63,13 @@ class MainWindow(QMainWindow):
         self._bridge = QtEventBridge(application.event_bus, self)
 
         central = QWidget()
-        layout = QHBoxLayout(central)
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        outer.addWidget(self._build_account_bar())
+
+        content = QWidget()
+        layout = QHBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
@@ -88,6 +95,7 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(sidebar)
         layout.addWidget(self._stack, stretch=1)
+        outer.addWidget(content, stretch=1)
         self.setCentralWidget(central)
 
         self._dashboard = DashboardView(
@@ -170,6 +178,7 @@ class MainWindow(QMainWindow):
         self._bridge.auth_state.connect(self._account_view.on_auth_state)
         self._bridge.auth_state.connect(self._team_view.on_auth_state)
         self._bridge.auth_state.connect(self._training_view.on_auth_state)
+        self._bridge.auth_state.connect(self._on_auth_state)
         self._bridge.license_state.connect(self._account_view.on_license_state)
         self._bridge.update_available.connect(self._account_view.on_update_available)
         self._bridge.diagnostics.connect(self._diagnostics_view.on_diagnostics)
@@ -180,6 +189,57 @@ class MainWindow(QMainWindow):
     def _add_view(self, name: str, widget: QWidget) -> None:
         QListWidgetItem(name, self._nav)
         self._stack.addWidget(widget)
+
+    # ------------------------------------------------------------------ #
+    # Top-right account control
+    # ------------------------------------------------------------------ #
+    def _build_account_bar(self) -> QWidget:
+        bar = QWidget()
+        bar.setStyleSheet("background: rgba(0,0,0,0.04);")
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(10, 4, 10, 4)
+        row.addStretch(1)
+        self._account_label = QLabel()
+        self._account_label.setStyleSheet("color: #888;")
+        self._account_button = QPushButton()
+        self._account_button.clicked.connect(self._on_account_button)
+        row.addWidget(self._account_label)
+        row.addWidget(self._account_button)
+        self._refresh_account_bar()
+        return bar
+
+    def _refresh_account_bar(self) -> None:
+        account = self._app.auth.account
+        if account is not None:
+            from ai_caster.auth.roles import role_label
+
+            self._account_label.setText(f"{account.label}  ·  {role_label(account.role_enum)}")
+            self._account_button.setText("Sign out")
+        else:
+            self._account_label.setText("Not signed in")
+            self._account_button.setText("Sign in")
+
+    def _on_account_button(self) -> None:
+        if self._app.auth.is_authenticated:
+            self._app.auth.logout()  # -> auth-state event -> _on_auth_state -> prompt
+        else:
+            self._prompt_sign_in()
+
+    def _on_auth_state(self, authenticated: bool, account, detail: str) -> None:  # noqa: ANN001
+        self._refresh_account_bar()
+        # A sign-out drops the operator straight back to the login / sign-up window.
+        if not authenticated and detail == "signed out":
+            QTimer.singleShot(0, self._prompt_sign_in)
+
+    def _prompt_sign_in(self) -> None:
+        from ai_caster.ui.auth_window import require_sign_in
+
+        if require_sign_in(self._app.auth):
+            self._refresh_account_bar()
+        else:
+            # Accounts are required; a dismissed re-sign-in closes the app.
+            _log.info("Re-sign-in dismissed; closing.")
+            self.close()
 
     def showEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().showEvent(event)

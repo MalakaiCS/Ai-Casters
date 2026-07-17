@@ -319,6 +319,10 @@ class SupabaseAuthBackend:
         account = replace(session.account, role=role)
         return replace(session, account=account)
 
+    def with_role(self, session: AuthSession) -> AuthSession:
+        """Public: re-read the account's role from the DB for a restored session."""
+        return self._with_role(session)
+
     # -- backend interface ---------------------------------------------- #
     def login(self, email: str, password: str, *, device_id: str) -> AuthResult:
         if not email or not password:

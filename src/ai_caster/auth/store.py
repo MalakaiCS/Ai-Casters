@@ -41,6 +41,10 @@ class SessionStore:
                 email=str(data["account"].get("email", "")),
                 display_name=str(data["account"].get("display_name", "")),
                 tier=str(data["account"].get("tier", "free")),
+                # Persist the RBAC role so a restored session (e.g. after an
+                # auto-update restart) keeps the real role instead of defaulting to
+                # "user" until the next manual sign-in.
+                role=str(data["account"].get("role", "user")),
             )
             expires = data.get("expires_at")
             return AuthSession(
@@ -60,6 +64,7 @@ class SessionStore:
                 "email": session.account.email,
                 "display_name": session.account.display_name,
                 "tier": session.account.tier,
+                "role": session.account.role,
             },
             "access_token": session.access_token,
             "refresh_token": session.refresh_token,

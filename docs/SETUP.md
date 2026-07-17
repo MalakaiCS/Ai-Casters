@@ -283,7 +283,11 @@ Tune or disable it under `downtime` (`slow_round_enabled`,
 
 - **Sign-in is required.** On launch the app shows a boot window — **sign in**,
   **create an account**, or **forgot password** — and only opens once you have a
-  real session (a saved session is restored automatically). Distributed builds are
+  real session (a saved session is restored automatically). Your signed-in email
+  and role show at the **top-right of the window**; the button there signs you out,
+  and **signing out drops you straight back to the login / sign-up window**. (The
+  Account page no longer duplicates login/create-account — it just shows your
+  session and a sign-out.) Distributed builds are
   **Supabase-only**: a build without a configured account service refuses sign-in
   rather than accepting anything, so you must ship it with Supabase configured
   (bake the `SUPABASE_URL`/`SUPABASE_ANON_KEY` secrets — see [`SUPABASE.md`](SUPABASE.md)).

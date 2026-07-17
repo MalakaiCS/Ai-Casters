@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListWidget,
     QPushButton,
     QVBoxLayout,
@@ -66,26 +65,17 @@ class AccountView(QWidget):
         layout = QVBoxLayout(box)
 
         self._status = QLabel()
+        self._status.setWordWrap(True)
         layout.addWidget(self._status)
 
-        form = QHBoxLayout()
-        self._email = QLineEdit()
-        self._email.setPlaceholderText("email")
-        self._password = QLineEdit()
-        self._password.setPlaceholderText("password")
-        self._password.setEchoMode(QLineEdit.EchoMode.Password)
-        self._sign_in = QPushButton("Sign in")
-        self._sign_in.clicked.connect(self._on_sign_in)
-        self._sign_up = QPushButton("Create account")
-        self._sign_up.clicked.connect(self._on_sign_up)
+        # Signing in/out is handled by the boot window and the app's top-right
+        # account control; this page just shows who's signed in, plus a sign-out.
+        actions = QHBoxLayout()
         self._sign_out = QPushButton("Sign out")
         self._sign_out.clicked.connect(self._on_sign_out)
-        form.addWidget(self._email)
-        form.addWidget(self._password)
-        form.addWidget(self._sign_in)
-        form.addWidget(self._sign_up)
-        form.addWidget(self._sign_out)
-        layout.addLayout(form)
+        actions.addWidget(self._sign_out)
+        actions.addStretch(1)
+        layout.addLayout(actions)
 
         self._devices = QListWidget()
         self._devices.setStyleSheet("font-size: 12px;")
@@ -124,20 +114,6 @@ class AccountView(QWidget):
     # ------------------------------------------------------------------ #
     # Actions
     # ------------------------------------------------------------------ #
-    def _on_sign_in(self) -> None:
-        self._auth.login(self._email.text().strip(), self._password.text())
-        self._password.clear()
-
-    def _on_sign_up(self) -> None:
-        result = self._auth.signup(self._email.text().strip(), self._password.text())
-        self._password.clear()
-        if result.ok and result.session is not None:
-            return  # signed in; the auth-state signal refreshes the view
-        if result.ok:
-            self._status.setText("Account created — check your email to confirm, then sign in.")
-        else:
-            self._status.setText(result.error or "Sign-up failed.")
-
     def _on_sign_out(self) -> None:
         self._auth.logout()
         self._licensing.clear()

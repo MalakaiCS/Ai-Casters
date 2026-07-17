@@ -201,17 +201,17 @@ class TeamView(QWidget):
         self._role_combo.clear()
         for role in assignable_roles(self._current_role()):
             self._role_combo.addItem(role_label(role), role.value)
-        # Can't manage someone at or above your own rank.
-        manageable = member.user_id != self._self_id()
-        self._apply_btn.setEnabled(manageable and self._role_combo.count() > 0)
-        if not manageable:
-            self._status.setText("You can't change this member's role.")
+        # Role changes are self-blocked (no changing your own rank), but a
+        # subscription is a grant, not a rank — a manager can set anyone's tier,
+        # including their own account.
+        role_editable = member.user_id != self._self_id()
+        self._apply_btn.setEnabled(role_editable and self._role_combo.count() > 0)
+        if not role_editable:
+            self._status.setText("You can't change your own role.")
         else:
             self._status.setText("")
 
-        # Tier can be changed for anyone a manager oversees (incl. themselves is
-        # blocked to avoid accidental self-lockout of a paid grant).
-        self._tier_btn.setEnabled(manageable)
+        self._tier_btn.setEnabled(True)
         self._select_combo_data(self._tier_combo, member.tier)
         self._tier_status.setText("")
 
